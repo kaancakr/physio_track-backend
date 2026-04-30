@@ -122,6 +122,8 @@ def build_code_expiry() -> datetime:
 
 def build_token_bundle(user: User) -> TokenBundle:
     refresh = RefreshToken.for_user(user)
+    refresh["token_version"] = user.token_version
+    refresh.access_token["token_version"] = user.token_version
     return TokenBundle(
         user=user,
         access=str(refresh.access_token),
@@ -280,6 +282,18 @@ def authenticate_user(payload: LoginPayload) -> TokenBundle:
     return build_token_bundle(authenticated_user)
 
 
-def blacklist_refresh_token(refresh_token: str) -> None:
-    token = RefreshToken(refresh_token)
-    token.blacklist()
+def validate_refresh_token_owner(refresh_token: RefreshToken, user: User) -> None:
+    token_user_id = refresh_token.payload.get("user_id")
+    normalized_token_user_id = user._meta.pk.to_python(token_user_id)
+
+    if normalized_token_user_id != user.id:
+        raise ValidationError({"refresh": "Refresh token does not belong to the authenticated user."})
+
+
+def logout_user(user: User, refresh_token: str) -> None:
+    with transaction.atomic():
+        token = RefreshToken(refresh_token)
+        validate_refresh_token_owner(token, user)
+        token.blacklist()
+        user.token_version += 1
+        user.save(update_fields=["token_version", "updated_at"])

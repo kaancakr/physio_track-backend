@@ -9,7 +9,7 @@ from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from apps.core.authentication.permissions import IsUnauthenticated
 from apps.core.authentication.services import (
     authenticate_user,
-    blacklist_refresh_token,
+    logout_user,
     resend_signup_code,
     signup_user,
     verify_signup_code,
@@ -206,7 +206,7 @@ class LogoutView(APIView):
         serializer = LogoutRequestViewModel(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        blacklist_refresh_token(serializer.validated_data["refresh"])
+        logout_user(request.user, serializer.validated_data["refresh"])
 
         return Response({"message": "Logout completed successfully."}, status=HTTP_200_OK)
 

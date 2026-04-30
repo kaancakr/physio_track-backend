@@ -81,6 +81,7 @@ class TokenPairResponseViewModel(serializers.Serializer):
 
 class TokenRefreshResponseViewModel(serializers.Serializer):
     access = serializers.CharField()
+    refresh = serializers.CharField()
 
 
 class SignupResponseViewModel(serializers.Serializer):

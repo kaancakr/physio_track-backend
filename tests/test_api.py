@@ -113,6 +113,42 @@ class ApiIntegrationTests(TestCase):
         self.assertIn("refresh", response.data)
         self.assertIsInstance(uuid.UUID(response.data["user"]["id"]), uuid.UUID)
 
+    def test_refresh_returns_new_access_and_refresh_tokens(self) -> None:
+        _, refresh_token = self.signup_and_verify_user()
+
+        response = self.client.post(
+            reverse("token-refresh"),
+            {"refresh": refresh_token},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("access", response.data)
+        self.assertIn("refresh", response.data)
+        self.assertNotEqual(response.data["refresh"], refresh_token)
+
+    def test_logout_revokes_access_and_refresh_tokens(self) -> None:
+        access_token, refresh_token = self.signup_and_verify_user()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
+
+        logout_response = self.client.post(
+            reverse("logout"),
+            {"refresh": refresh_token},
+            format="json",
+        )
+
+        self.assertEqual(logout_response.status_code, status.HTTP_200_OK)
+
+        me_response = self.client.get(reverse("me"))
+        self.assertEqual(me_response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        refresh_response = self.client.post(
+            reverse("token-refresh"),
+            {"refresh": refresh_token},
+            format="json",
+        )
+        self.assertEqual(refresh_response.status_code, status.HTTP_401_UNAUTHORIZED)
+
     def test_resend_and_verify_endpoints_enforce_rate_limits(self) -> None:
         self.client.post(reverse("signup"), self.signup_payload, format="json")
         resend_url = reverse("send-signup-code")
