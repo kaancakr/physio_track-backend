@@ -7,6 +7,14 @@ from rest_framework.status import HTTP_200_OK
 from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
 
+from apps.core.openapi import (
+    BAD_REQUEST_RESPONSE,
+    FORBIDDEN_RESPONSE,
+    NOT_FOUND_RESPONSE,
+    THROTTLED_RESPONSE,
+    UNAUTHORIZED_RESPONSE,
+    UUID_PATH_PARAMETER,
+)
 from apps.core.pagination import StandardResultsSetPagination
 from apps.core.users.models import User
 from apps.core.users.services import update_user_profile
@@ -75,21 +83,38 @@ def apply_user_list_filters(queryset, search: str | None, is_active: str | None,
         operation_id="get_user_profile",
         summary="Get current user details",
         description="Return the authenticated user's profile details.",
-        responses={200: UserViewModel},
+        responses={
+            200: UserViewModel,
+            401: UNAUTHORIZED_RESPONSE,
+            403: FORBIDDEN_RESPONSE,
+            429: THROTTLED_RESPONSE,
+        },
     ),
     patch=extend_schema(
         operation_id="patch_user_profile",
         summary="Update current user details",
         description="Partially update the authenticated user's profile fields.",
         request=UserProfileUpdateViewModel,
-        responses={200: UserViewModel},
+        responses={
+            200: UserViewModel,
+            400: BAD_REQUEST_RESPONSE,
+            401: UNAUTHORIZED_RESPONSE,
+            403: FORBIDDEN_RESPONSE,
+            429: THROTTLED_RESPONSE,
+        },
     ),
     put=extend_schema(
         operation_id="put_user_profile",
         summary="Replace current user details",
         description="Update the authenticated user's profile fields with an explicit payload.",
         request=UserProfileUpdateViewModel,
-        responses={200: UserViewModel},
+        responses={
+            200: UserViewModel,
+            400: BAD_REQUEST_RESPONSE,
+            401: UNAUTHORIZED_RESPONSE,
+            403: FORBIDDEN_RESPONSE,
+            429: THROTTLED_RESPONSE,
+        },
     ),
 )
 class CurrentUserView(APIView):
@@ -122,6 +147,12 @@ class CurrentUserView(APIView):
         summary="List all users",
         description="Return all users in the system. This endpoint is for administrators only.",
         parameters=USER_LIST_PARAMETERS,
+        responses={
+            200: UserViewModel,
+            401: UNAUTHORIZED_RESPONSE,
+            403: FORBIDDEN_RESPONSE,
+            429: THROTTLED_RESPONSE,
+        },
     )
 )
 class UserListView(ListAPIView):
@@ -143,7 +174,14 @@ class UserListView(ListAPIView):
         operation_id="get_user_by_id",
         summary="Get user by id",
         description="Return a single user by public UUID. This endpoint is for administrators only.",
-        responses={200: UserViewModel},
+        parameters=[UUID_PATH_PARAMETER],
+        responses={
+            200: UserViewModel,
+            401: UNAUTHORIZED_RESPONSE,
+            403: FORBIDDEN_RESPONSE,
+            404: NOT_FOUND_RESPONSE,
+            429: THROTTLED_RESPONSE,
+        },
     )
 )
 class UserDetailView(RetrieveAPIView):

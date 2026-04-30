@@ -79,6 +79,10 @@ class TokenPairResponseViewModel(serializers.Serializer):
     user = UserViewModel()
 
 
+class TokenRefreshResponseViewModel(serializers.Serializer):
+    access = serializers.CharField()
+
+
 class SignupResponseViewModel(serializers.Serializer):
     message = serializers.CharField()
     verification_required = serializers.BooleanField()

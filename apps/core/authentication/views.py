@@ -1,4 +1,4 @@
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+from drf_spectacular.utils import extend_schema
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.status import HTTP_200_OK, HTTP_201_CREATED
@@ -31,8 +31,15 @@ from apps.core.authentication.viewmodels import (
     SendSignupCodeRequestViewModel,
     SignupRequestViewModel,
     SignupResponseViewModel,
+    TokenRefreshResponseViewModel,
     TokenPairResponseViewModel,
     VerifySignupCodeRequestViewModel,
+)
+from apps.core.openapi import (
+    BAD_REQUEST_RESPONSE,
+    FORBIDDEN_RESPONSE,
+    THROTTLED_RESPONSE,
+    UNAUTHORIZED_RESPONSE,
 )
 from apps.core.users.viewmodels import UserViewModel
 
@@ -46,7 +53,11 @@ class SignupView(APIView):
         summary="Create account",
         description="Create an unverified account and send a signup verification code by email.",
         request=SignupRequestViewModel,
-        responses={201: SignupResponseViewModel},
+        responses={
+            201: SignupResponseViewModel,
+            400: BAD_REQUEST_RESPONSE,
+            429: THROTTLED_RESPONSE,
+        },
     )
     def post(self, request):
         serializer = SignupRequestViewModel(data=request.data)
@@ -72,7 +83,11 @@ class SendSignupCodeView(APIView):
         summary="Resend signup code",
         description="Resend a signup verification code when the account is still unverified.",
         request=SendSignupCodeRequestViewModel,
-        responses={200: MessageViewModel},
+        responses={
+            200: MessageViewModel,
+            400: BAD_REQUEST_RESPONSE,
+            429: THROTTLED_RESPONSE,
+        },
     )
     def post(self, request):
         serializer = SendSignupCodeRequestViewModel(data=request.data)
@@ -97,7 +112,11 @@ class VerifySignupCodeView(APIView):
         summary="Verify signup code",
         description="Verify the email code for signup and return JWT tokens.",
         request=VerifySignupCodeRequestViewModel,
-        responses={200: TokenPairResponseViewModel},
+        responses={
+            200: TokenPairResponseViewModel,
+            400: BAD_REQUEST_RESPONSE,
+            429: THROTTLED_RESPONSE,
+        },
     )
     def post(self, request):
         serializer = VerifySignupCodeRequestViewModel(data=request.data)
@@ -124,7 +143,12 @@ class LoginView(APIView):
         summary="Login",
         description="Authenticate with email and password and return JWT tokens.",
         request=LoginRequestViewModel,
-        responses={200: TokenPairResponseViewModel},
+        responses={
+            200: TokenPairResponseViewModel,
+            400: BAD_REQUEST_RESPONSE,
+            401: UNAUTHORIZED_RESPONSE,
+            429: THROTTLED_RESPONSE,
+        },
     )
     def post(self, request):
         serializer = LoginRequestViewModel(data=request.data)
@@ -150,7 +174,11 @@ class TokenRefreshRouteView(APIView):
         summary="Refresh JWT access token",
         description="Exchange a refresh token for a new access token.",
         request=TokenRefreshSerializer,
-        responses={200: OpenApiResponse(description="Token refresh succeeded.")},
+        responses={
+            200: TokenRefreshResponseViewModel,
+            400: BAD_REQUEST_RESPONSE,
+            429: THROTTLED_RESPONSE,
+        },
     )
     def post(self, request):
         serializer = TokenRefreshSerializer(data=request.data)
@@ -167,7 +195,12 @@ class LogoutView(APIView):
         summary="Logout",
         description="Blacklist the submitted refresh token.",
         request=LogoutRequestViewModel,
-        responses={200: MessageViewModel},
+        responses={
+            200: MessageViewModel,
+            400: BAD_REQUEST_RESPONSE,
+            401: UNAUTHORIZED_RESPONSE,
+            429: THROTTLED_RESPONSE,
+        },
     )
     def post(self, request):
         serializer = LogoutRequestViewModel(data=request.data)
@@ -186,7 +219,12 @@ class MeView(APIView):
         operation_id="get_current_user",
         summary="Current user",
         description="Return the authenticated user's profile and role flags.",
-        responses={200: UserViewModel},
+        responses={
+            200: UserViewModel,
+            401: UNAUTHORIZED_RESPONSE,
+            403: FORBIDDEN_RESPONSE,
+            429: THROTTLED_RESPONSE,
+        },
     )
     def get(self, request):
         return Response(UserViewModel(request.user).data, status=HTTP_200_OK)

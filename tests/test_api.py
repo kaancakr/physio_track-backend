@@ -297,6 +297,11 @@ class ApiIntegrationTests(TestCase):
         self.assertEqual(swagger_response.status_code, status.HTTP_200_OK)
         self.assertIn("/api/auth/signup", schema_response.data["paths"])
         self.assertIn("/api/programs/", schema_response.data["paths"])
+        self.assertIn("400", schema_response.data["paths"]["/api/auth/signup"]["post"]["responses"])
+        self.assertIn("429", schema_response.data["paths"]["/api/auth/signup"]["post"]["responses"])
+        self.assertIn("401", schema_response.data["paths"]["/api/auth/login"]["post"]["responses"])
+        self.assertIn("404", schema_response.data["paths"]["/api/programs/{id}/"]["get"]["responses"])
+        self.assertIn("404", schema_response.data["paths"]["/api/users/{user_id}/"]["get"]["responses"])
 
     def test_admin_can_manage_programs(self) -> None:
         admin_user = User.objects.create_superuser(

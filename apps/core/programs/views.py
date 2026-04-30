@@ -4,6 +4,13 @@ from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.throttling import UserRateThrottle
 
+from apps.core.openapi import (
+    FORBIDDEN_RESPONSE,
+    NOT_FOUND_RESPONSE,
+    PROGRAM_ID_PATH_PARAMETER,
+    THROTTLED_RESPONSE,
+    UNAUTHORIZED_RESPONSE,
+)
 from apps.core.pagination import StandardResultsSetPagination
 from apps.core.programs.models import ExerciseProgram
 from apps.core.programs.viewmodels import ExerciseProgramDetailViewModel, ExerciseProgramListItemViewModel
@@ -58,6 +65,12 @@ def apply_program_list_filters(queryset, focus_area: str | None, search: str | N
         summary="List exercise programs",
         description="Return all active exercise programs available to authenticated users.",
         parameters=PROGRAM_LIST_PARAMETERS,
+        responses={
+            200: ExerciseProgramListItemViewModel,
+            401: UNAUTHORIZED_RESPONSE,
+            403: FORBIDDEN_RESPONSE,
+            429: THROTTLED_RESPONSE,
+        },
     )
 )
 class ProgramListView(ListAPIView):
@@ -87,6 +100,12 @@ class ProgramListView(ListAPIView):
                 description="Filter programs by active status.",
             ),
         ],
+        responses={
+            200: ExerciseProgramListItemViewModel,
+            401: UNAUTHORIZED_RESPONSE,
+            403: FORBIDDEN_RESPONSE,
+            429: THROTTLED_RESPONSE,
+        },
     )
 )
 class ProgramAdminListView(ListAPIView):
@@ -117,6 +136,14 @@ class ProgramAdminListView(ListAPIView):
         operation_id="get_program",
         summary="Get exercise program",
         description="Return one exercise program with its ordered steps.",
+        parameters=[PROGRAM_ID_PATH_PARAMETER],
+        responses={
+            200: ExerciseProgramDetailViewModel,
+            401: UNAUTHORIZED_RESPONSE,
+            403: FORBIDDEN_RESPONSE,
+            404: NOT_FOUND_RESPONSE,
+            429: THROTTLED_RESPONSE,
+        },
     )
 )
 class ProgramDetailView(RetrieveAPIView):
