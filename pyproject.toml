@@ -1,7 +1,7 @@
 [project]
-name = "pyhsio-track-backend"
+name = "physio-track-backend"
 version = "0.1.0"
-description = "Django backend for the PyhsioTrack mobile application."
+description = "Django backend for the PhysioTrack mobile application."
 requires-python = ">=3.13"
 dependencies = [
     "Django>=4.2,<5.0",

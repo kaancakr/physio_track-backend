@@ -4,7 +4,7 @@ from apps.core.programs.services import upsert_seed_programs
 
 
 class Command(BaseCommand):
-    help = "Seed the default PyhsioTrack exercise programs."
+    help = "Seed the default PhysioTrack exercise programs."
 
     def handle(self, *args, **options):
         created_or_updated_count = upsert_seed_programs()

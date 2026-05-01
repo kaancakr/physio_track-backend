@@ -16,6 +16,6 @@ PASSWORD_HASHERS: list[str] = [
 ]
 
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
-PYHSIOTRACK_EMAIL_PROVIDER = "django"
+PHYSIOTRACK_EMAIL_PROVIDER = "django"
 RESEND_API_KEY = "test-resend-api-key"
-RESEND_FROM_EMAIL = "no-reply@pyhsiotrack.test"
+RESEND_FROM_EMAIL = "no-reply@physiotrack.test"

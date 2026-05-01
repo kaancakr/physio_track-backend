@@ -140,8 +140,8 @@ SIMPLE_JWT: dict[str, object] = {
 }
 
 SPECTACULAR_SETTINGS: dict[str, object] = {
-    "TITLE": "PyhsioTrack Backend API",
-    "DESCRIPTION": "OpenAPI schema for the PyhsioTrack Django backend.",
+    "TITLE": "PhysioTrack Backend API",
+    "DESCRIPTION": "OpenAPI schema for the PhysioTrack Django backend.",
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "ENUM_NAME_OVERRIDES": {
@@ -161,5 +161,5 @@ AUTH_PASSWORD_VALIDATORS: list[dict[str, str]] = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
-PYHSIOTRACK_VERIFICATION_CODE_TTL_SECONDS = 600
-PYHSIOTRACK_VERIFICATION_CODE_MAX_ATTEMPTS = 5
+PHYSIOTRACK_VERIFICATION_CODE_TTL_SECONDS = 600
+PHYSIOTRACK_VERIFICATION_CODE_MAX_ATTEMPTS = 5

@@ -40,8 +40,8 @@ class ResendEmailConnector:
         payload = {
             "from": self.from_email,
             "to": [recipient_email],
-            "subject": "Your PyhsioTrack verification code",
-            "text": f"Your PyhsioTrack verification code is {code}. It expires in 10 minutes.",
+            "subject": "Your PhysioTrack verification code",
+            "text": f"Your PhysioTrack verification code is {code}. It expires in 10 minutes.",
         }
         request = Request(
             self.endpoint,
@@ -83,8 +83,8 @@ class DjangoEmailConnector:
 
     def send_signup_code(self, recipient_email: str, code: str) -> None:
         send_mail(
-            subject="Your PyhsioTrack verification code",
-            message=f"Your PyhsioTrack verification code is {code}. It expires in 10 minutes.",
+            subject="Your PhysioTrack verification code",
+            message=f"Your PhysioTrack verification code is {code}. It expires in 10 minutes.",
             from_email=self.from_email,
             recipient_list=[recipient_email],
             fail_silently=False,
@@ -96,7 +96,7 @@ def normalize_email(email: str) -> str:
 
 
 def get_email_connector() -> ResendEmailConnector | DjangoEmailConnector:
-    provider = settings.PYHSIOTRACK_EMAIL_PROVIDER
+    provider = settings.PHYSIOTRACK_EMAIL_PROVIDER
 
     if provider == "resend":
         return ResendEmailConnector(
@@ -116,7 +116,7 @@ def generate_verification_code() -> str:
 
 
 def build_code_expiry() -> datetime:
-    ttl_seconds = settings.PYHSIOTRACK_VERIFICATION_CODE_TTL_SECONDS
+    ttl_seconds = settings.PHYSIOTRACK_VERIFICATION_CODE_TTL_SECONDS
     return timezone.now() + timedelta(seconds=ttl_seconds)
 
 
@@ -219,7 +219,7 @@ def resend_signup_code(payload: EmailPayload) -> None:
 
 def verify_signup_code(payload: VerifyCodePayload) -> TokenBundle:
     normalized_email = normalize_email(payload["email"])
-    max_attempts = settings.PYHSIOTRACK_VERIFICATION_CODE_MAX_ATTEMPTS
+    max_attempts = settings.PHYSIOTRACK_VERIFICATION_CODE_MAX_ATTEMPTS
 
     with transaction.atomic():
         user = User.objects.select_for_update().filter(email=normalized_email).first()
