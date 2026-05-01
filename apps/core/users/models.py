@@ -73,6 +73,7 @@ class UserManager(BaseUserManager["User"]):
 
 
 class User(TimestampedModel, AbstractBaseUser, PermissionsMixin):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     email = models.EmailField(unique=True)
     is_active = models.BooleanField(default=False)

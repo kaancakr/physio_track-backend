@@ -21,3 +21,8 @@ DATABASES: dict[str, dict[str, object]] = {
 PYHSIOTRACK_EMAIL_PROVIDER = read_required_env("PYHSIOTRACK_EMAIL_PROVIDER")
 RESEND_API_KEY = read_required_env("RESEND_API_KEY")
 RESEND_FROM_EMAIL = read_required_env("RESEND_FROM_EMAIL")
+
+EMAIL_BACKEND = read_optional_env("EMAIL_BACKEND")
+
+if EMAIL_BACKEND is None and PYHSIOTRACK_EMAIL_PROVIDER == "django":
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
