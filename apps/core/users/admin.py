@@ -74,6 +74,13 @@ class UserAdmin(BaseUserAdmin):
 
         return ""
 
+    @admin.display(ordering="profile__gender", description="Gender")
+    def gender(self, obj: User) -> str:
+        if hasattr(obj, "profile"):
+            return obj.profile.gender
+
+        return ""
+
 
 @admin.register(Profile)
 class ProfileAdmin(admin.ModelAdmin):

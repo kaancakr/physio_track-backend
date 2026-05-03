@@ -15,10 +15,9 @@ class Migration(migrations.Migration):
                 choices=[
                     ("male", "Male"),
                     ("female", "Female"),
-                    ("other", "Other"),
                     ("prefer_not_to_say", "Prefer not to say"),
                 ],
-                max_length=16,
+                max_length=32,
             ),
         ),
     ]
