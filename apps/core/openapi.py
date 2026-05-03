@@ -115,7 +115,7 @@ UUID_PATH_PARAMETER = OpenApiParameter(
 
 PROGRAM_ID_PATH_PARAMETER = OpenApiParameter(
     name="id",
-    type=OpenApiTypes.STR,
+    type=OpenApiTypes.UUID,
     location=OpenApiParameter.PATH,
-    description="Program slug identifier.",
+    description="Program UUID.",
 )

@@ -309,14 +309,60 @@ class ApiIntegrationTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
 
         list_response = self.client.get(reverse("program-list"))
-        detail_response = self.client.get(reverse("program-detail", kwargs={"id": "neck-release-flow"}))
+        matching_programs = [
+            program for program in list_response.data["results"] if program["focus_area"] == "neck"
+        ]
+        self.assertEqual(len(matching_programs), 1)
+        program_id = matching_programs[0]["id"]
+        detail_response = self.client.get(reverse("program-detail", kwargs={"id": program_id}))
 
         self.assertEqual(list_response.status_code, status.HTTP_200_OK)
         self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
         self.assertEqual(list_response.data["count"], 4)
         self.assertEqual(len(list_response.data["results"]), 4)
-        self.assertEqual(detail_response.data["id"], "neck-release-flow")
-        self.assertEqual(len(detail_response.data["steps"]), 3)
+        self.assertIsInstance(uuid.UUID(detail_response.data["id"]), uuid.UUID)
+        self.assertEqual(detail_response.data["difficulty"], "beginner")
+        self.assertIsInstance(uuid.UUID(detail_response.data["exercises"][0]["id"]), uuid.UUID)
+        self.assertIsInstance(uuid.UUID(detail_response.data["exercises"][0]["item_id"]), uuid.UUID)
+        self.assertEqual(len(detail_response.data["exercises"]), 13)
+        self.assertFalse(detail_response.data["is_finished"])
+        self.assertIsNone(detail_response.data["finished_at"])
+        self.assertIn("instruction_steps", detail_response.data["exercises"][0])
+        self.assertIn("timing", detail_response.data["exercises"][0])
+        self.assertIn("instruction_step_images", detail_response.data["exercises"][0])
+        self.assertEqual(
+            detail_response.data["cover_image"],
+            {
+                "url": "",
+                "thumbnail_url": "",
+                "width": None,
+                "height": None,
+                "alt": "Cover image for the neck pain relief stretching program.",
+                "blurhash": "",
+            },
+        )
+        self.assertEqual(
+            detail_response.data["exercises"][0]["image"],
+            {
+                "url": "",
+                "thumbnail_url": "",
+                "width": None,
+                "height": None,
+                "alt": "Person performing a neck glide exercise.",
+            },
+        )
+        self.assertEqual(
+            detail_response.data["exercises"][0]["instruction_step_images"][0],
+            {
+                "url": "",
+                "thumbnail_url": "",
+                "width": None,
+                "height": None,
+                "alt": "Sit or stand upright with the head in a neutral position.",
+            },
+        )
+        self.assertEqual(detail_response.data["exercises"][0]["exercise_order"], 1)
+        self.assertGreater(len(detail_response.data["exercises"][0]["instruction_steps"]), 0)
 
     def test_program_list_supports_pagination_and_query_filters(self) -> None:
         upsert_seed_programs()
@@ -331,7 +377,42 @@ class ApiIntegrationTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["count"], 1)
         self.assertEqual(len(response.data["results"]), 1)
-        self.assertEqual(response.data["results"][0]["id"], "neck-release-flow")
+        self.assertIsInstance(uuid.UUID(response.data["results"][0]["id"]), uuid.UUID)
+        self.assertEqual(response.data["results"][0]["difficulty"], "beginner")
+        self.assertEqual(response.data["results"][0]["exercises_count"], 13)
+        self.assertFalse(response.data["results"][0]["is_finished"])
+        self.assertIsNone(response.data["results"][0]["finished_at"])
+
+    def test_program_completion_is_returned_in_program_list_and_detail(self) -> None:
+        upsert_seed_programs()
+        access_token, _ = self.signup_and_verify_user()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
+        list_before_completion_response = self.client.get(reverse("program-list"))
+        matching_programs = [
+            program for program in list_before_completion_response.data["results"] if program["focus_area"] == "neck"
+        ]
+        self.assertEqual(len(matching_programs), 1)
+        program_id = matching_programs[0]["id"]
+
+        completion_response = self.client.post(
+            reverse("program-complete", kwargs={"id": program_id}),
+            {"finished_at": "2026-05-03T10:15:00Z"},
+            format="json",
+        )
+        list_response = self.client.get(reverse("program-list"))
+        detail_response = self.client.get(reverse("program-detail", kwargs={"id": program_id}))
+
+        self.assertEqual(completion_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(completion_response.data["is_finished"])
+        self.assertEqual(completion_response.data["finished_at"], "2026-05-03T10:15:00Z")
+        self.assertTrue(detail_response.data["is_finished"])
+        self.assertEqual(detail_response.data["finished_at"].isoformat(), "2026-05-03T10:15:00+00:00")
+        matching_programs = [
+            program for program in list_response.data["results"] if program["id"] == program_id
+        ]
+        self.assertEqual(len(matching_programs), 1)
+        self.assertTrue(matching_programs[0]["is_finished"])
+        self.assertEqual(matching_programs[0]["finished_at"].isoformat(), "2026-05-03T10:15:00+00:00")
 
     def test_user_list_supports_pagination_and_query_filters(self) -> None:
         self.signup_and_verify_user()
