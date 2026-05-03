@@ -1,3 +1,5 @@
+from operator import ge
+
 from rest_framework import serializers
 
 from apps.core.users.models import Profile, User
@@ -11,6 +13,7 @@ class ProfileViewModel(serializers.ModelSerializer):
             "focus_area",
             "weekly_goal",
             "age_range",
+            "gender",
             "daily_step_goal",
             "metadata",
         )
@@ -40,6 +43,11 @@ class UserProfileUpdateViewModel(serializers.Serializer):
     daily_step_goal = serializers.ChoiceField(
         choices=Profile._meta.get_field("daily_step_goal").choices,
         required=False,
+    )
+    gender = serializers.ChoiceField(
+        choices=Profile._meta.get_field("gender").choices,
+        required=False,
+        allow_blank=True,
     )
     metadata = serializers.JSONField(required=False)
 

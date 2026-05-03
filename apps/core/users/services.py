@@ -14,6 +14,7 @@ def update_user_profile(
         "focus_area",
         "weekly_goal",
         "age_range",
+        "gender",
         "daily_step_goal",
         "metadata",
     }
@@ -35,6 +36,7 @@ def update_user_profile(
                 "weekly_goal": 2,
                 "age_range": "18-29",
                 "daily_step_goal": 3000,
+                "gender": "prefer_not_to_say",
                 "metadata": {},
             },
         )

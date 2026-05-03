@@ -31,6 +31,13 @@ AGE_RANGE_CHOICES: Final[list[tuple[str, str]]] = [
     ("60+", "60+"),
 ]
 
+GENDER_CHOICES: Final[list[tuple[str, str]]] = [
+    ("male", "Male"),
+    ("female", "Female"),
+    ("other", "Other"),
+    ("prefer_not_to_say", "Prefer not to say"),
+]
+
 DAILY_STEP_GOAL_CHOICES: Final[list[tuple[int, str]]] = [
     (3000, "3000"),
     (5000, "5000"),
@@ -99,6 +106,7 @@ class Profile(TimestampedModel):
     focus_area = models.CharField(max_length=32, choices=FOCUS_AREA_CHOICES)
     weekly_goal = models.PositiveSmallIntegerField(choices=WEEKLY_GOAL_CHOICES)
     age_range = models.CharField(max_length=16, choices=AGE_RANGE_CHOICES)
+    gender = models.CharField(max_length=16, choices=GENDER_CHOICES, blank=True)
     daily_step_goal = models.PositiveIntegerField(choices=DAILY_STEP_GOAL_CHOICES)
     metadata = models.JSONField(default=dict, blank=True)
 

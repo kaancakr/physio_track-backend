@@ -26,6 +26,7 @@ class ApiIntegrationTests(TestCase):
             "focus_area": "neck",
             "weekly_goal": 3,
             "age_range": "30-44",
+            "gender": "female",
             "daily_step_goal": 5000,
         }
 
@@ -61,6 +62,7 @@ class ApiIntegrationTests(TestCase):
         self.assertFalse(user.is_active)
         self.assertFalse(user.is_email_verified)
         self.assertEqual(user.profile.full_name, self.signup_payload["full_name"])
+        self.assertEqual(user.profile.gender, self.signup_payload["gender"])
         self.assertEqual(len(mail.outbox), 1)
 
     def test_verify_signup_code_activates_user_and_returns_tokens(self) -> None:
@@ -80,6 +82,20 @@ class ApiIntegrationTests(TestCase):
         self.assertIn("access", response.data)
         self.assertIn("refresh", response.data)
         self.assertEqual(response.data["user"]["id"], str(user.public_id))
+        self.assertEqual(response.data["user"]["profile"]["gender"], self.signup_payload["gender"])
+
+    def test_signup_rejects_unknown_gender_choice(self) -> None:
+        response = self.client.post(
+            reverse("signup"),
+            {
+                **self.signup_payload,
+                "gender": "invalid-choice",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("gender", response.data)
 
     def test_login_rejects_unverified_accounts(self) -> None:
         self.client.post(reverse("signup"), self.signup_payload, format="json")
@@ -224,6 +240,21 @@ class ApiIntegrationTests(TestCase):
         self.assertEqual(response.data["profile"]["full_name"], "Updated Patient")
         self.assertEqual(response.data["profile"]["weekly_goal"], 5)
         self.assertEqual(response.data["profile"]["metadata"]["preferredLanguage"], "en")
+
+    def test_user_me_endpoint_allows_clearing_gender(self) -> None:
+        access_token, _ = self.signup_and_verify_user()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
+
+        response = self.client.patch(
+            reverse("user-me"),
+            {
+                "gender": "",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["profile"]["gender"], "")
 
     def test_admin_can_list_all_users(self) -> None:
         self.signup_and_verify_user()

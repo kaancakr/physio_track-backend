@@ -8,6 +8,7 @@ from apps.core.users.models import (
     AGE_RANGE_CHOICES,
     DAILY_STEP_GOAL_CHOICES,
     FOCUS_AREA_CHOICES,
+    GENDER_CHOICES,
     WEEKLY_GOAL_CHOICES,
 )
 from apps.core.users.viewmodels import UserViewModel
@@ -21,6 +22,7 @@ class SignupPayload(TypedDict):
     weekly_goal: int
     age_range: str
     daily_step_goal: int
+    gender: str
 
 
 class LoginPayload(TypedDict):
@@ -48,6 +50,7 @@ class SignupRequestViewModel(serializers.Serializer):
     focus_area = serializers.ChoiceField(choices=FOCUS_AREA_CHOICES)
     weekly_goal = serializers.ChoiceField(choices=WEEKLY_GOAL_CHOICES)
     age_range = serializers.ChoiceField(choices=AGE_RANGE_CHOICES)
+    gender = serializers.ChoiceField(choices=GENDER_CHOICES, allow_blank=True)
     daily_step_goal = serializers.ChoiceField(choices=DAILY_STEP_GOAL_CHOICES)
 
 

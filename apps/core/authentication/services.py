@@ -166,6 +166,7 @@ def upsert_signup_user(payload: SignupPayload) -> User:
                 "weekly_goal": payload["weekly_goal"],
                 "age_range": payload["age_range"],
                 "daily_step_goal": payload["daily_step_goal"],
+                "gender": payload["gender"],
                 "metadata": build_signup_profile_metadata(),
             },
         )

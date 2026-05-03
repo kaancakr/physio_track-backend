@@ -8,7 +8,7 @@ class ProfileInline(admin.StackedInline):
     model = Profile
     extra = 0
     can_delete = False
-    fields = ("full_name", "focus_area", "weekly_goal", "age_range", "daily_step_goal", "metadata")
+    fields = ("full_name", "focus_area", "weekly_goal", "age_range", "daily_step_goal", "gender", "metadata")
 
 
 @admin.register(User)
@@ -17,6 +17,7 @@ class UserAdmin(BaseUserAdmin):
         "email",
         "full_name",
         "focus_area",
+        "gender",
         "is_active",
         "is_email_verified",
         "is_staff",
@@ -76,6 +77,6 @@ class UserAdmin(BaseUserAdmin):
 
 @admin.register(Profile)
 class ProfileAdmin(admin.ModelAdmin):
-    list_display = ("user", "full_name", "focus_area", "weekly_goal", "daily_step_goal")
-    list_filter = ("focus_area", "weekly_goal", "age_range", "daily_step_goal")
+    list_display = ("user", "full_name", "focus_area", "weekly_goal", "daily_step_goal", "gender")
+    list_filter = ("focus_area", "weekly_goal", "age_range", "daily_step_goal", "gender")
     search_fields = ("user__email", "full_name")
