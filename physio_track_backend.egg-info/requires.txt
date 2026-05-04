@@ -1,0 +1,6 @@
+Django<5.0,>=4.2
+djangorestframework<4.0,>=3.16
+djangorestframework-simplejwt<6.0,>=5.5
+drf-spectacular<1.0,>=0.27
+psycopg2-binary<3.0,>=2.9
+python-dotenv<2.0,>=1.0

@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: physio-track-backend
+Version: 0.1.0
+Summary: Django backend for the PhysioTrack mobile application.
+Requires-Python: >=3.13
+Requires-Dist: Django<5.0,>=4.2
+Requires-Dist: djangorestframework<4.0,>=3.16
+Requires-Dist: djangorestframework-simplejwt<6.0,>=5.5
+Requires-Dist: drf-spectacular<1.0,>=0.27
+Requires-Dist: psycopg2-binary<3.0,>=2.9
+Requires-Dist: python-dotenv<2.0,>=1.0
