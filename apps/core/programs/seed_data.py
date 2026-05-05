@@ -16,7 +16,191 @@ def build_instruction_step_images(instruction_steps: list[str]) -> list[dict[str
     ]
 
 
-PROGRAM_SEED_DATA = [
+def build_instruction_step_details(
+    instruction_steps: list[str],
+    instruction_step_images: list[dict[str, str | int | None]],
+) -> list[dict[str, object]]:
+    step_details: list[dict[str, object]] = []
+
+    for step_index, instruction_step in enumerate(instruction_steps):
+        if step_index < len(instruction_step_images):
+            step_image = instruction_step_images[step_index]
+        else:
+            step_image = build_image_asset(instruction_step)
+
+        step_details.append(
+            {
+                "step_index": step_index,
+                "title": f"Step {step_index + 1}",
+                "instruction": instruction_step,
+                "image": {
+                    "url": step_image.get("url", ""),
+                    "thumbnail_url": step_image.get("thumbnail_url", ""),
+                    "width": step_image.get("width"),
+                    "height": step_image.get("height"),
+                    "alt": step_image.get("alt", instruction_step),
+                },
+            }
+        )
+
+    return step_details
+
+
+def derive_equipment(title: str, instruction: str) -> list[str]:
+    normalized_text = f"{title} {instruction}".lower()
+
+    if "towel" in normalized_text:
+        return ["towel"]
+
+    if "chair" in normalized_text or "sit to stand" in normalized_text:
+        return ["chair"]
+
+    if "wall" in normalized_text:
+        return ["wall"]
+
+    if "support" in normalized_text:
+        return ["support_surface"]
+
+    return ["bodyweight"]
+
+
+def derive_movement_type(title: str, instruction: str) -> str:
+    normalized_text = f"{title} {instruction}".lower()
+
+    if "mobilization" in normalized_text or "glide" in normalized_text:
+        return "mobilization"
+
+    if "stretch" in normalized_text or "tilt" in normalized_text:
+        return "stretch"
+
+    if "press" in normalized_text or "set" in normalized_text:
+        return "isometric"
+
+    if "sit to stand" in normalized_text:
+        return "functional_strength"
+
+    return "mobility"
+
+
+def derive_primary_targets(body_area: str) -> list[str]:
+    if body_area == "neck":
+        return ["cervical_mobility", "postural_support"]
+
+    if body_area == "shoulder":
+        return ["scapular_control", "shoulder_mobility"]
+
+    if body_area == "back":
+        return ["thoracic_mobility", "lumbar_mobility"]
+
+    if body_area == "knee":
+        return ["knee_range_of_motion", "quadriceps_activation"]
+
+    return ["general_mobility", "movement_preparation"]
+
+
+def derive_therapeutic_goals(body_area: str) -> list[str]:
+    if body_area == "neck":
+        return ["reduce_stiffness", "improve_range_of_motion", "support_daily_posture"]
+
+    if body_area == "shoulder":
+        return ["reduce_tension", "restore_mobility", "improve_control"]
+
+    if body_area == "back":
+        return ["reduce_back_stiffness", "improve_spinal_motion", "support_daily_movement"]
+
+    if body_area == "knee":
+        return ["restore_confidence", "improve_joint_motion", "build_light_strength"]
+
+    return ["reduce_general_stiffness", "improve_coordination", "prepare_for_activity"]
+
+
+def build_seed_exercise_metadata(
+    body_area: str,
+    title: str,
+    instruction: str,
+    caution_note: str,
+    metadata: dict[str, object],
+) -> dict[str, object]:
+    instruction_steps = metadata.get("instruction_steps", [])
+    instruction_step_images = metadata.get("instruction_step_images", [])
+
+    if not isinstance(instruction_steps, list):
+        instruction_steps = []
+
+    if not isinstance(instruction_step_images, list):
+        instruction_step_images = build_instruction_step_images([str(step) for step in instruction_steps])
+
+    normalized_instruction_steps = [str(step) for step in instruction_steps]
+    normalized_instruction_step_images = [
+        image if isinstance(image, dict) else build_image_asset(normalized_instruction_steps[index])
+        for index, image in enumerate(instruction_step_images[: len(normalized_instruction_steps)])
+    ]
+
+    if len(normalized_instruction_step_images) < len(normalized_instruction_steps):
+        remaining_steps = normalized_instruction_steps[len(normalized_instruction_step_images) :]
+        normalized_instruction_step_images.extend(build_instruction_step_images(remaining_steps))
+
+    return {
+        **metadata,
+        "instruction_steps": normalized_instruction_steps,
+        "instruction_step_images": normalized_instruction_step_images,
+        "steps": build_instruction_step_details(
+            instruction_steps=normalized_instruction_steps,
+            instruction_step_images=normalized_instruction_step_images,
+        ),
+        "equipment": derive_equipment(title, instruction),
+        "movement_type": derive_movement_type(title, instruction),
+        "primary_targets": derive_primary_targets(body_area),
+        "therapeutic_goals": derive_therapeutic_goals(body_area),
+        "safety_flags": [caution_note],
+        "content_source": "seed_programs",
+    }
+
+
+def enrich_program_seed_data(program_seed_data: list[dict[str, object]]) -> list[dict[str, object]]:
+    enriched_programs: list[dict[str, object]] = []
+
+    for program_payload in program_seed_data:
+        raw_exercises = program_payload["exercises"]
+
+        if not isinstance(raw_exercises, list):
+            raise ValueError(f"Expected a list of exercises for program {program_payload['code']}.")
+
+        enriched_exercises: list[dict[str, object]] = []
+
+        for raw_exercise in raw_exercises:
+            if not isinstance(raw_exercise, dict):
+                raise ValueError(f"Expected each exercise to be a dictionary in program {program_payload['code']}.")
+
+            raw_metadata = raw_exercise.get("metadata", {})
+
+            if not isinstance(raw_metadata, dict):
+                raise ValueError(f"Expected exercise metadata to be a dictionary for exercise {raw_exercise['code']}.")
+
+            enriched_exercises.append(
+                {
+                    **raw_exercise,
+                    "metadata": build_seed_exercise_metadata(
+                        body_area=str(raw_exercise["body_area"]),
+                        title=str(raw_exercise["title"]),
+                        instruction=str(raw_exercise["instruction"]),
+                        caution_note=str(raw_exercise["caution_note"]),
+                        metadata=raw_metadata,
+                    ),
+                }
+            )
+
+        enriched_programs.append(
+            {
+                **program_payload,
+                "exercises": enriched_exercises,
+            }
+        )
+
+    return enriched_programs
+
+
+PROGRAM_SEED_DATA = enrich_program_seed_data([
     {
         "code": "neck-release-flow",
         "title": "Neck Pain Relief Stretching Program",
@@ -458,4 +642,4 @@ PROGRAM_SEED_DATA = [
             },
         ],
     },
-]
+])

@@ -119,3 +119,35 @@ class ExerciseProgramCompletion(TimestampedModel):
 
     def __str__(self) -> str:
         return f"{self.user_id}:{self.program_id}:{self.is_finished}"
+
+
+class ExerciseStepCompletion(TimestampedModel):
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="exercise_step_completions",
+    )
+    program = models.ForeignKey(
+        ExerciseProgram,
+        on_delete=models.CASCADE,
+        related_name="step_completions",
+    )
+    exercise = models.ForeignKey(
+        Exercise,
+        on_delete=models.CASCADE,
+        related_name="step_completions",
+    )
+    step_index = models.PositiveIntegerField()
+    completed_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["program_id", "exercise_id", "step_index"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=("user", "program", "exercise", "step_index"),
+                name="unique_user_program_exercise_step_completion",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user_id}:{self.program_id}:{self.exercise_id}:{self.step_index}"

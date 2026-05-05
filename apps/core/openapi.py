@@ -119,3 +119,17 @@ PROGRAM_ID_PATH_PARAMETER = OpenApiParameter(
     location=OpenApiParameter.PATH,
     description="Program UUID.",
 )
+
+EXERCISE_ID_PATH_PARAMETER = OpenApiParameter(
+    name="exercise_id",
+    type=OpenApiTypes.UUID,
+    location=OpenApiParameter.PATH,
+    description="Exercise UUID.",
+)
+
+STEP_INDEX_PATH_PARAMETER = OpenApiParameter(
+    name="step_index",
+    type=OpenApiTypes.INT,
+    location=OpenApiParameter.PATH,
+    description="Zero-based instruction step index.",
+)

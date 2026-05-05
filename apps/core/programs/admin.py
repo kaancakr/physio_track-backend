@@ -1,6 +1,12 @@
 from django.contrib import admin
 
-from apps.core.programs.models import Exercise, ExerciseProgram, ExerciseProgramCompletion, ExerciseProgramItem
+from apps.core.programs.models import (
+    Exercise,
+    ExerciseProgram,
+    ExerciseProgramCompletion,
+    ExerciseProgramItem,
+    ExerciseStepCompletion,
+)
 
 
 class ExerciseProgramItemInline(admin.TabularInline):
@@ -44,3 +50,10 @@ class ExerciseProgramCompletionAdmin(admin.ModelAdmin):
     list_display = ("user", "program", "is_finished", "finished_at")
     list_filter = ("is_finished", "program__focus_area")
     search_fields = ("user__email", "program__code", "program__title")
+
+
+@admin.register(ExerciseStepCompletion)
+class ExerciseStepCompletionAdmin(admin.ModelAdmin):
+    list_display = ("user", "program", "exercise", "step_index", "completed_at")
+    list_filter = ("program__focus_area", "exercise__body_area")
+    search_fields = ("user__email", "program__code", "exercise__code", "exercise__title")

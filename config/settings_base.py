@@ -118,6 +118,8 @@ REST_FRAMEWORK: dict[str, object] = {
         "rest_framework.permissions.AllowAny",
     ),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DATETIME_FORMAT": "%Y-%m-%dT%H:%M:%SZ",
+    "DATETIME_INPUT_FORMATS": ["iso-8601"],
     "DEFAULT_THROTTLE_RATES": {
         "signup_ip": "5/hour",
         "signup_resend_ip": "1/minute",

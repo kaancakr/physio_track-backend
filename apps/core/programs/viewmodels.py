@@ -1,9 +1,15 @@
-from datetime import datetime
+from __future__ import annotations
 
 from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers
 
-from apps.core.programs.models import ExerciseProgram, ExerciseProgramCompletion, ExerciseProgramItem
+from apps.core.programs.models import ExerciseProgram, ExerciseProgramItem
+from apps.core.programs.services import (
+    ExerciseProgressSnapshot,
+    ProgramProgressSnapshot,
+    get_instruction_step_details,
+    get_instruction_steps,
+)
 
 
 class ExerciseImageViewModel(serializers.Serializer):
@@ -12,6 +18,17 @@ class ExerciseImageViewModel(serializers.Serializer):
     width = serializers.IntegerField(allow_null=True)
     height = serializers.IntegerField(allow_null=True)
     alt = serializers.CharField()
+
+
+ExerciseStepViewModel = inline_serializer(
+    name="ExerciseStepViewModel",
+    fields={
+        "step_index": serializers.IntegerField(),
+        "title": serializers.CharField(),
+        "instruction": serializers.CharField(),
+        "image": ExerciseImageViewModel(),
+    },
+)
 
 
 TimingViewModel = inline_serializer(
@@ -26,132 +43,48 @@ TimingViewModel = inline_serializer(
 )
 
 
-class ExerciseProgramItemViewModel(serializers.ModelSerializer):
-    id = serializers.UUIDField(source="exercise.id")
-    item_id = serializers.UUIDField(source="id")
-    title = serializers.CharField(source="exercise.title")
-    instruction = serializers.CharField(source="exercise.instruction")
-    caution_note = serializers.CharField(source="exercise.caution_note")
-    duration_sec = serializers.IntegerField(source="exercise.duration_sec")
-    body_area = serializers.CharField(source="exercise.body_area")
-    metadata = serializers.JSONField(source="exercise.metadata")
-    exercise_order = serializers.IntegerField()
-    image = serializers.SerializerMethodField()
-    instruction_steps = serializers.SerializerMethodField()
-    instruction_step_images = serializers.SerializerMethodField()
-    timing = serializers.SerializerMethodField()
+ProgramProgressViewModel = inline_serializer(
+    name="ProgramProgressViewModel",
+    fields={
+        "exercises_count": serializers.IntegerField(),
+        "completed_exercises_count": serializers.IntegerField(),
+        "is_finished": serializers.BooleanField(),
+    },
+)
 
-    class Meta:
-        model = ExerciseProgramItem
-        fields = (
-            "id",
-            "item_id",
-            "exercise_order",
-            "title",
-            "instruction",
-            "instruction_steps",
-            "instruction_step_images",
-            "caution_note",
-            "duration_sec",
-            "timing",
-            "body_area",
-            "image",
-            "metadata",
-        )
-
-    @extend_schema_field(ExerciseImageViewModel)
-    def get_image(self, obj: ExerciseProgramItem) -> dict[str, str | int | None]:
-        return {
-            "url": obj.exercise.image_url,
-            "thumbnail_url": obj.exercise.image_thumbnail_url,
-            "width": obj.exercise.image_width,
-            "height": obj.exercise.image_height,
-            "alt": obj.exercise.image_alt,
-        }
-
-    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
-    def get_instruction_steps(self, obj: ExerciseProgramItem) -> list[str]:
-        instruction_steps = obj.exercise.metadata.get("instruction_steps", [])
-
-        if not isinstance(instruction_steps, list):
-            return []
-
-        return [str(step) for step in instruction_steps]
-
-    @extend_schema_field(serializers.ListSerializer(child=ExerciseImageViewModel()))
-    def get_instruction_step_images(self, obj: ExerciseProgramItem) -> list[dict[str, str | int | None]]:
-        instruction_step_images = obj.exercise.metadata.get("instruction_step_images", [])
-        instruction_steps = obj.exercise.metadata.get("instruction_steps", [])
-
-        if not isinstance(instruction_step_images, list):
-            instruction_step_images = []
-
-        if not isinstance(instruction_steps, list):
-            instruction_steps = []
-
-        normalized_images: list[dict[str, str | int | None]] = []
-
-        for image in instruction_step_images:
-            if not isinstance(image, dict):
-                continue
-
-            normalized_images.append(
-                {
-                    "url": image.get("url", ""),
-                    "thumbnail_url": image.get("thumbnail_url", ""),
-                    "width": image.get("width"),
-                    "height": image.get("height"),
-                    "alt": image.get("alt", ""),
-                }
-            )
-
-        if len(normalized_images) == 0 and len(instruction_steps) > 0:
-            return [
-                {
-                    "url": "",
-                    "thumbnail_url": "",
-                    "width": None,
-                    "height": None,
-                    "alt": str(instruction_step),
-                }
-                for instruction_step in instruction_steps
-            ]
-
-        return normalized_images
-
-    @extend_schema_field(TimingViewModel)
-    def get_timing(self, obj: ExerciseProgramItem) -> dict[str, str | int]:
-        timing = obj.exercise.metadata.get("timing", {})
-
-        if not isinstance(timing, dict):
-            return {}
-
-        return timing
+ExerciseStepCompletionProgramProgressViewModel = inline_serializer(
+    name="ExerciseStepCompletionProgramProgressViewModel",
+    fields={
+        "exercises_count": serializers.IntegerField(),
+        "completed_exercises_count": serializers.IntegerField(),
+        "is_finished": serializers.BooleanField(),
+    },
+)
 
 
-class ExerciseProgramCompletionViewModel(serializers.ModelSerializer):
-    class Meta:
-        model = ExerciseProgramCompletion
-        fields = (
-            "is_finished",
-            "finished_at",
-        )
+def get_program_progress(program: ExerciseProgram) -> ProgramProgressSnapshot:
+    progress = getattr(program, "current_user_program_progress", None)
+
+    if progress is None:
+        raise RuntimeError("Program progress was not attached to the serializer instance.")
+
+    return progress
 
 
-def get_program_completion(program: ExerciseProgram) -> ExerciseProgramCompletion | None:
-    completion_records = getattr(program, "current_user_completion_records", [])
+def get_exercise_progress(program_item: ExerciseProgramItem) -> ExerciseProgressSnapshot:
+    progress = getattr(program_item, "current_user_exercise_progress", None)
 
-    if len(completion_records) == 0:
-        return None
+    if progress is None:
+        raise RuntimeError("Exercise progress was not attached to the serializer instance.")
 
-    return completion_records[0]
+    return progress
 
 
 class ExerciseProgramListItemViewModel(serializers.ModelSerializer):
     cover_image = serializers.SerializerMethodField()
     exercises_count = serializers.SerializerMethodField()
+    completed_exercises_count = serializers.SerializerMethodField()
     is_finished = serializers.SerializerMethodField()
-    finished_at = serializers.SerializerMethodField()
 
     class Meta:
         model = ExerciseProgram
@@ -166,8 +99,8 @@ class ExerciseProgramListItemViewModel(serializers.ModelSerializer):
             "total_duration_sec",
             "cover_image",
             "exercises_count",
+            "completed_exercises_count",
             "is_finished",
-            "finished_at",
             "metadata",
         )
 
@@ -195,90 +128,205 @@ class ExerciseProgramListItemViewModel(serializers.ModelSerializer):
         }
 
     def get_exercises_count(self, obj: ExerciseProgram) -> int:
-        return len(obj.exercise_items.all())
+        return get_program_progress(obj).exercises_count
+
+    def get_completed_exercises_count(self, obj: ExerciseProgram) -> int:
+        return get_program_progress(obj).completed_exercises_count
 
     def get_is_finished(self, obj: ExerciseProgram) -> bool:
-        completion = get_program_completion(obj)
-
-        if completion is None:
-            return False
-
-        return completion.is_finished
-
-    def get_finished_at(self, obj: ExerciseProgram) -> datetime | None:
-        completion = get_program_completion(obj)
-
-        if completion is None:
-            return None
-
-        return completion.finished_at
+        return get_program_progress(obj).is_finished
 
 
-class ExerciseProgramDetailViewModel(serializers.ModelSerializer):
-    cover_image = serializers.SerializerMethodField()
-    exercises = ExerciseProgramItemViewModel(many=True, read_only=True, source="exercise_items")
+class ExerciseProgramExerciseListItemViewModel(serializers.ModelSerializer):
+    id = serializers.UUIDField(source="exercise.id")
+    item_id = serializers.UUIDField(source="id")
+    title = serializers.CharField(source="exercise.title")
+    instruction = serializers.CharField(source="exercise.instruction")
+    caution_note = serializers.CharField(source="exercise.caution_note")
+    duration_sec = serializers.IntegerField(source="exercise.duration_sec")
+    body_area = serializers.CharField(source="exercise.body_area")
+    metadata = serializers.JSONField(source="exercise.metadata")
+    exercise_order = serializers.IntegerField()
+    image = serializers.SerializerMethodField()
+    steps_count = serializers.SerializerMethodField()
+    completed_steps_count = serializers.SerializerMethodField()
+    next_step_index = serializers.SerializerMethodField()
     is_finished = serializers.SerializerMethodField()
-    finished_at = serializers.SerializerMethodField()
 
     class Meta:
-        model = ExerciseProgram
+        model = ExerciseProgramItem
         fields = (
             "id",
+            "item_id",
+            "exercise_order",
             "title",
-            "description",
-            "focus_area",
-            "focus_area_label",
-            "difficulty",
-            "difficulty_label",
-            "total_duration_sec",
-            "cover_image",
+            "instruction",
+            "caution_note",
+            "duration_sec",
+            "body_area",
+            "image",
+            "steps_count",
+            "completed_steps_count",
+            "next_step_index",
             "is_finished",
-            "finished_at",
-            "exercises",
             "metadata",
         )
 
-    @extend_schema_field(
-        inline_serializer(
-            name="ProgramDetailCoverImageViewModel",
-            fields={
-                "url": serializers.CharField(),
-                "thumbnail_url": serializers.CharField(),
-                "width": serializers.IntegerField(allow_null=True),
-                "height": serializers.IntegerField(allow_null=True),
-                "alt": serializers.CharField(),
-                "blurhash": serializers.CharField(),
-            },
-        )
-    )
-    def get_cover_image(self, obj: ExerciseProgram) -> dict[str, str | int | None]:
+    @extend_schema_field(ExerciseImageViewModel)
+    def get_image(self, obj: ExerciseProgramItem) -> dict[str, str | int | None]:
         return {
-            "url": obj.cover_image_url,
-            "thumbnail_url": obj.cover_image_thumbnail_url,
-            "width": obj.cover_image_width,
-            "height": obj.cover_image_height,
-            "alt": obj.cover_image_alt,
-            "blurhash": obj.cover_image_blurhash,
+            "url": obj.exercise.image_url,
+            "thumbnail_url": obj.exercise.image_thumbnail_url,
+            "width": obj.exercise.image_width,
+            "height": obj.exercise.image_height,
+            "alt": obj.exercise.image_alt,
         }
 
-    def get_is_finished(self, obj: ExerciseProgram) -> bool:
-        completion = get_program_completion(obj)
+    def get_steps_count(self, obj: ExerciseProgramItem) -> int:
+        return get_exercise_progress(obj).steps_count
 
-        if completion is None:
-            return False
+    def get_completed_steps_count(self, obj: ExerciseProgramItem) -> int:
+        return get_exercise_progress(obj).completed_steps_count
 
-        return completion.is_finished
+    def get_next_step_index(self, obj: ExerciseProgramItem) -> int | None:
+        return get_exercise_progress(obj).next_step_index
 
-    def get_finished_at(self, obj: ExerciseProgram) -> datetime | None:
-        completion = get_program_completion(obj)
-
-        if completion is None:
-            return None
-
-        return completion.finished_at
+    def get_is_finished(self, obj: ExerciseProgramItem) -> bool:
+        return get_exercise_progress(obj).is_finished
 
 
-class ExerciseProgramCompletionUpdateViewModel(serializers.Serializer):
-    finished_at = serializers.DateTimeField(
-        help_text="UTC timestamp for when the user finished the program.",
-    )
+class ExerciseProgramExerciseDetailViewModel(serializers.ModelSerializer):
+    id = serializers.UUIDField(source="exercise.id")
+    item_id = serializers.UUIDField(source="id")
+    title = serializers.CharField(source="exercise.title")
+    instruction = serializers.CharField(source="exercise.instruction")
+    caution_note = serializers.CharField(source="exercise.caution_note")
+    duration_sec = serializers.IntegerField(source="exercise.duration_sec")
+    body_area = serializers.CharField(source="exercise.body_area")
+    metadata = serializers.JSONField(source="exercise.metadata")
+    exercise_order = serializers.IntegerField()
+    image = serializers.SerializerMethodField()
+    steps = serializers.SerializerMethodField()
+    instruction_steps = serializers.SerializerMethodField()
+    instruction_step_images = serializers.SerializerMethodField()
+    timing = serializers.SerializerMethodField()
+    steps_count = serializers.SerializerMethodField()
+    completed_steps_count = serializers.SerializerMethodField()
+    completed_step_indexes = serializers.SerializerMethodField()
+    next_step_index = serializers.SerializerMethodField()
+    is_finished = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ExerciseProgramItem
+        fields = (
+            "id",
+            "item_id",
+            "exercise_order",
+            "title",
+            "instruction",
+            "steps",
+            "instruction_steps",
+            "instruction_step_images",
+            "caution_note",
+            "duration_sec",
+            "timing",
+            "body_area",
+            "image",
+            "steps_count",
+            "completed_steps_count",
+            "completed_step_indexes",
+            "next_step_index",
+            "is_finished",
+            "metadata",
+        )
+
+    @extend_schema_field(ExerciseImageViewModel)
+    def get_image(self, obj: ExerciseProgramItem) -> dict[str, str | int | None]:
+        return {
+            "url": obj.exercise.image_url,
+            "thumbnail_url": obj.exercise.image_thumbnail_url,
+            "width": obj.exercise.image_width,
+            "height": obj.exercise.image_height,
+            "alt": obj.exercise.image_alt,
+        }
+
+    @extend_schema_field(serializers.ListSerializer(child=ExerciseStepViewModel))
+    def get_steps(self, obj: ExerciseProgramItem) -> list[dict[str, object]]:
+        return get_instruction_step_details(obj.exercise)
+
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
+    def get_instruction_steps(self, obj: ExerciseProgramItem) -> list[str]:
+        return get_instruction_steps(obj.exercise)
+
+    @extend_schema_field(serializers.ListSerializer(child=ExerciseImageViewModel()))
+    def get_instruction_step_images(self, obj: ExerciseProgramItem) -> list[dict[str, str | int | None]]:
+        instruction_step_images = obj.exercise.metadata.get("instruction_step_images", [])
+        instruction_steps = get_instruction_steps(obj.exercise)
+
+        if not isinstance(instruction_step_images, list):
+            instruction_step_images = []
+
+        normalized_images: list[dict[str, str | int | None]] = []
+
+        for image in instruction_step_images:
+            if not isinstance(image, dict):
+                continue
+
+            normalized_images.append(
+                {
+                    "url": image.get("url", ""),
+                    "thumbnail_url": image.get("thumbnail_url", ""),
+                    "width": image.get("width"),
+                    "height": image.get("height"),
+                    "alt": image.get("alt", ""),
+                }
+            )
+
+        if len(normalized_images) == 0 and len(instruction_steps) > 0:
+            return [
+                {
+                    "url": "",
+                    "thumbnail_url": "",
+                    "width": None,
+                    "height": None,
+                    "alt": instruction_step,
+                }
+                for instruction_step in instruction_steps
+            ]
+
+        return normalized_images
+
+    @extend_schema_field(TimingViewModel)
+    def get_timing(self, obj: ExerciseProgramItem) -> dict[str, str | int]:
+        timing = obj.exercise.metadata.get("timing", {})
+
+        if not isinstance(timing, dict):
+            return {}
+
+        return timing
+
+    def get_steps_count(self, obj: ExerciseProgramItem) -> int:
+        return get_exercise_progress(obj).steps_count
+
+    def get_completed_steps_count(self, obj: ExerciseProgramItem) -> int:
+        return get_exercise_progress(obj).completed_steps_count
+
+    def get_completed_step_indexes(self, obj: ExerciseProgramItem) -> list[int]:
+        return get_exercise_progress(obj).completed_step_indexes
+
+    def get_next_step_index(self, obj: ExerciseProgramItem) -> int | None:
+        return get_exercise_progress(obj).next_step_index
+
+    def get_is_finished(self, obj: ExerciseProgramItem) -> bool:
+        return get_exercise_progress(obj).is_finished
+
+
+class ExerciseStepCompletionResponseViewModel(serializers.Serializer):
+    program_id = serializers.UUIDField()
+    exercise_id = serializers.UUIDField()
+    completed_step_indexes = serializers.ListField(child=serializers.IntegerField())
+    completed_steps_count = serializers.IntegerField()
+    steps_count = serializers.IntegerField()
+    next_step_index = serializers.IntegerField(allow_null=True)
+    is_finished = serializers.BooleanField()
+    program_progress = ExerciseStepCompletionProgramProgressViewModel
