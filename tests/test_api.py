@@ -237,6 +237,50 @@ class ApiIntegrationTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["email"], self.signup_payload["email"])
 
+    def test_me_endpoints_return_overall_progress_and_update_after_step_completion(self) -> None:
+        upsert_seed_programs()
+        access_token, _ = self.signup_and_verify_user()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
+        program_id = self.get_neck_program_id()
+        exercise_id = self.get_program_exercise_ids(program_id)[0]
+
+        initial_auth_me_response = self.client.get(reverse("me"))
+        initial_user_me_response = self.client.get(reverse("user-me"))
+
+        self.assertEqual(initial_auth_me_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(initial_user_me_response.status_code, status.HTTP_200_OK)
+        self.assertIn("overall_progress", initial_auth_me_response.data)
+        self.assertEqual(
+            initial_auth_me_response.data["overall_progress"],
+            initial_user_me_response.data["overall_progress"],
+        )
+        self.assertEqual(initial_auth_me_response.data["overall_progress"]["completed_steps_count"], 0)
+        self.assertEqual(initial_auth_me_response.data["overall_progress"]["completed_exercises_count"], 0)
+        self.assertEqual(initial_auth_me_response.data["overall_progress"]["completed_programs_count"], 0)
+        self.assertFalse(initial_auth_me_response.data["overall_progress"]["is_finished"])
+
+        completion_response = self.client.post(
+            reverse(
+                "exercise-step-complete",
+                kwargs={"id": program_id, "exercise_id": exercise_id, "step_index": 0},
+            ),
+            format="json",
+        )
+        updated_auth_me_response = self.client.get(reverse("me"))
+        updated_user_me_response = self.client.get(reverse("user-me"))
+
+        self.assertEqual(completion_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(updated_auth_me_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(updated_user_me_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            updated_auth_me_response.data["overall_progress"],
+            updated_user_me_response.data["overall_progress"],
+        )
+        self.assertEqual(updated_auth_me_response.data["overall_progress"]["completed_steps_count"], 1)
+        self.assertEqual(updated_auth_me_response.data["overall_progress"]["completed_exercises_count"], 0)
+        self.assertEqual(updated_auth_me_response.data["overall_progress"]["completed_programs_count"], 0)
+        self.assertFalse(updated_auth_me_response.data["overall_progress"]["is_finished"])
+
     def test_user_me_endpoint_updates_profile(self) -> None:
         access_token, _ = self.signup_and_verify_user()
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")

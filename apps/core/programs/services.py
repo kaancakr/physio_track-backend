@@ -29,6 +29,17 @@ class ProgramProgressSnapshot:
 
 
 @dataclass(frozen=True)
+class UserOverallProgressSnapshot:
+    programs_count: int
+    completed_programs_count: int
+    exercises_count: int
+    completed_exercises_count: int
+    steps_count: int
+    completed_steps_count: int
+    is_finished: bool
+
+
+@dataclass(frozen=True)
 class StepCompletionResult:
     exercise_progress: ExerciseProgressSnapshot
     program_progress: ProgramProgressSnapshot
@@ -310,6 +321,84 @@ def get_program_progress_for_user(
         )
 
     return build_program_progress(program_items, progress_by_exercise_id)
+
+
+def get_user_overall_progress_for_user(user: User) -> UserOverallProgressSnapshot:
+    active_programs = list(ExerciseProgram.objects.filter(is_active=True).order_by("title"))
+    active_program_ids = [program.id for program in active_programs]
+    program_items = list(
+        ExerciseProgramItem.objects.select_related("program", "exercise")
+        .filter(program_id__in=active_program_ids)
+        .order_by("program_id", "exercise_order")
+    )
+    completions = list(
+        ExerciseStepCompletion.objects.select_related("exercise")
+        .filter(user=user, program_id__in=active_program_ids)
+        .order_by("program_id", "exercise_id", "step_index")
+    )
+
+    completed_step_indexes_by_program_and_exercise: dict[tuple[str, str], set[int]] = {}
+
+    for completion in completions:
+        completion_key = (str(completion.program_id), str(completion.exercise_id))
+        existing_indexes = completed_step_indexes_by_program_and_exercise.get(completion_key, set())
+        completed_step_indexes_by_program_and_exercise[completion_key] = {
+            *existing_indexes,
+            completion.step_index,
+        }
+
+    program_items_by_program_id: dict[str, list[ExerciseProgramItem]] = {}
+
+    for program_item in program_items:
+        program_key = str(program_item.program_id)
+        existing_items = program_items_by_program_id.get(program_key, [])
+        program_items_by_program_id[program_key] = [*existing_items, program_item]
+
+    programs_count = len(active_programs)
+    completed_programs_count = 0
+    exercises_count = 0
+    completed_exercises_count = 0
+    steps_count = 0
+    completed_steps_count = 0
+
+    for program in active_programs:
+        current_program_items = program_items_by_program_id.get(str(program.id), [])
+        progress_by_exercise_id: dict[str, ExerciseProgressSnapshot] = {}
+
+        for program_item in current_program_items:
+            exercise_progress = build_exercise_progress(
+                program_item.exercise,
+                sorted(
+                    completed_step_indexes_by_program_and_exercise.get(
+                        (str(program_item.program_id), str(program_item.exercise_id)),
+                        set(),
+                    )
+                ),
+            )
+            progress_by_exercise_id[str(program_item.exercise_id)] = exercise_progress
+            exercises_count += 1
+            steps_count += exercise_progress.steps_count
+            completed_steps_count += exercise_progress.completed_steps_count
+
+            if exercise_progress.is_finished:
+                completed_exercises_count += 1
+
+        program_progress = build_program_progress(current_program_items, progress_by_exercise_id)
+
+        if program_progress.is_finished:
+            completed_programs_count += 1
+
+    is_finished = programs_count > 0 and completed_programs_count == programs_count
+
+    return UserOverallProgressSnapshot(
+        programs_count=programs_count,
+        completed_programs_count=completed_programs_count,
+        exercises_count=exercises_count,
+        completed_exercises_count=completed_exercises_count,
+        steps_count=steps_count,
+        completed_steps_count=completed_steps_count,
+        is_finished=is_finished,
+    )
 
 
 @transaction.atomic

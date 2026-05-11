@@ -11,7 +11,7 @@ from apps.core.users.models import (
     GENDER_CHOICES,
     WEEKLY_GOAL_CHOICES,
 )
-from apps.core.users.viewmodels import UserViewModel
+from apps.core.users.viewmodels import CurrentUserViewModel
 
 
 class SignupPayload(TypedDict):
@@ -79,7 +79,7 @@ class MessageViewModel(serializers.Serializer):
 class TokenPairResponseViewModel(serializers.Serializer):
     access = serializers.CharField()
     refresh = serializers.CharField()
-    user = UserViewModel()
+    user = CurrentUserViewModel()
 
 
 class TokenRefreshResponseViewModel(serializers.Serializer):

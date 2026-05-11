@@ -18,7 +18,7 @@ from apps.core.openapi import (
 from apps.core.pagination import StandardResultsSetPagination
 from apps.core.users.models import User
 from apps.core.users.services import update_user_profile
-from apps.core.users.viewmodels import UserProfileUpdateViewModel, UserViewModel
+from apps.core.users.viewmodels import CurrentUserViewModel, UserProfileUpdateViewModel, UserViewModel
 
 
 USER_LIST_PARAMETERS = [
@@ -84,7 +84,7 @@ def apply_user_list_filters(queryset, search: str | None, is_active: str | None,
         summary="Get current user details",
         description="Return the authenticated user's profile details.",
         responses={
-            200: UserViewModel,
+            200: CurrentUserViewModel,
             401: UNAUTHORIZED_RESPONSE,
             403: FORBIDDEN_RESPONSE,
             429: THROTTLED_RESPONSE,
@@ -96,7 +96,7 @@ def apply_user_list_filters(queryset, search: str | None, is_active: str | None,
         description="Partially update the authenticated user's profile fields.",
         request=UserProfileUpdateViewModel,
         responses={
-            200: UserViewModel,
+            200: CurrentUserViewModel,
             400: BAD_REQUEST_RESPONSE,
             401: UNAUTHORIZED_RESPONSE,
             403: FORBIDDEN_RESPONSE,
@@ -109,7 +109,7 @@ def apply_user_list_filters(queryset, search: str | None, is_active: str | None,
         description="Update the authenticated user's profile fields with an explicit payload.",
         request=UserProfileUpdateViewModel,
         responses={
-            200: UserViewModel,
+            200: CurrentUserViewModel,
             400: BAD_REQUEST_RESPONSE,
             401: UNAUTHORIZED_RESPONSE,
             403: FORBIDDEN_RESPONSE,
@@ -122,7 +122,7 @@ class CurrentUserView(APIView):
     throttle_classes = [UserRateThrottle]
 
     def get(self, request):
-        return Response(UserViewModel(request.user).data, status=HTTP_200_OK)
+        return Response(CurrentUserViewModel(request.user).data, status=HTTP_200_OK)
 
     def patch(self, request):
         serializer = UserProfileUpdateViewModel(data=request.data, partial=True)
@@ -130,7 +130,7 @@ class CurrentUserView(APIView):
 
         user = update_user_profile(request.user, serializer.validated_data)
 
-        return Response(UserViewModel(user).data, status=HTTP_200_OK)
+        return Response(CurrentUserViewModel(user).data, status=HTTP_200_OK)
 
     def put(self, request):
         serializer = UserProfileUpdateViewModel(data=request.data)
@@ -138,7 +138,7 @@ class CurrentUserView(APIView):
 
         user = update_user_profile(request.user, serializer.validated_data)
 
-        return Response(UserViewModel(user).data, status=HTTP_200_OK)
+        return Response(CurrentUserViewModel(user).data, status=HTTP_200_OK)
 
 
 @extend_schema_view(

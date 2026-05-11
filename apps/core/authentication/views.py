@@ -41,7 +41,7 @@ from apps.core.openapi import (
     THROTTLED_RESPONSE,
     UNAUTHORIZED_RESPONSE,
 )
-from apps.core.users.viewmodels import UserViewModel
+from apps.core.users.viewmodels import CurrentUserViewModel
 
 
 class SignupView(APIView):
@@ -128,7 +128,7 @@ class VerifySignupCodeView(APIView):
             {
                 "access": token_bundle.access,
                 "refresh": token_bundle.refresh,
-                "user": UserViewModel(token_bundle.user).data,
+                "user": CurrentUserViewModel(token_bundle.user).data,
             },
             status=HTTP_200_OK,
         )
@@ -160,7 +160,7 @@ class LoginView(APIView):
             {
                 "access": token_bundle.access,
                 "refresh": token_bundle.refresh,
-                "user": UserViewModel(token_bundle.user).data,
+                "user": CurrentUserViewModel(token_bundle.user).data,
             },
             status=HTTP_200_OK,
         )
@@ -220,11 +220,11 @@ class MeView(APIView):
         summary="Current user",
         description="Return the authenticated user's profile and role flags.",
         responses={
-            200: UserViewModel,
+            200: CurrentUserViewModel,
             401: UNAUTHORIZED_RESPONSE,
             403: FORBIDDEN_RESPONSE,
             429: THROTTLED_RESPONSE,
         },
     )
     def get(self, request):
-        return Response(UserViewModel(request.user).data, status=HTTP_200_OK)
+        return Response(CurrentUserViewModel(request.user).data, status=HTTP_200_OK)
