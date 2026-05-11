@@ -101,7 +101,34 @@ class SendSignupCodeView(APIView):
             },
             status=HTTP_200_OK,
         )
+        
+class ResendSignupCodeView(APIView):
+    permission_classes = [IsUnauthenticated]
+    throttle_classes = [SignupResendIpRateThrottle, SignupResendEmailRateThrottle]
 
+    @extend_schema(
+        operation_id="resend_signup_code",
+        summary="Resend signup code",
+        description="Resend a signup verification code when the account is still unverified.",
+        request=SendSignupCodeRequestViewModel,
+        responses={
+            200: MessageViewModel,
+            400: BAD_REQUEST_RESPONSE,
+            429: THROTTLED_RESPONSE,
+        },
+    )
+    def post(self, request):
+        serializer = SendSignupCodeRequestViewModel(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        resend_signup_code(serializer.validated_data)
+
+        return Response(
+            {
+                "message": "If the signup flow is still pending, a new verification code has been sent.",
+            },
+            status=HTTP_200_OK,
+        )
 
 class VerifySignupCodeView(APIView):
     permission_classes = [IsUnauthenticated]
