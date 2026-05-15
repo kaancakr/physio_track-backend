@@ -395,14 +395,16 @@ class FavouriteExerciseCalendarView(APIView):
         for favourite_exercise in favourite_exercises:
             active_program_items = getattr(favourite_exercise.exercise, "active_program_items", [])
             is_completed = any(program_item.current_user_exercise_progress.is_finished for program_item in active_program_items)
+            favourite_snapshot = build_favourite_exercise_snapshot(favourite_exercise)
             exercises.append(
                 {
                     "exercise_id": favourite_exercise.exercise_id,
                     "title": favourite_exercise.exercise.title,
                     "is_completed": is_completed,
-                    "current_streak_days": favourite_exercise.current_streak_days,
-                    "longest_streak_days": favourite_exercise.longest_streak_days,
-                    "suggested_days_per_week": favourite_exercise.suggested_days_per_week,
+                    "current_streak_days": favourite_snapshot.current_streak_days,
+                    "longest_streak_days": favourite_snapshot.longest_streak_days,
+                    "suggested_days_per_week": favourite_snapshot.suggested_days_per_week,
+                    "days_of_week": favourite_snapshot.days_of_week,
                 }
             )
 
@@ -637,6 +639,7 @@ class ExerciseFavouriteUpdateView(APIView):
             user=request.user,
             exercise=program_item.exercise,
             is_favorite=bool(serializer.validated_data["is_favorite"]),
+            days_of_week=serializer.validated_data.get("days_of_week"),
         )
         favourite_snapshot = build_favourite_exercise_snapshot(favourite_exercise)
 
@@ -645,6 +648,7 @@ class ExerciseFavouriteUpdateView(APIView):
                 "exercise_id": str(program_item.exercise_id),
                 "is_favorite": favourite_snapshot.is_favorite,
                 "suggested_days_per_week": favourite_snapshot.suggested_days_per_week,
+                "days_of_week": favourite_snapshot.days_of_week,
                 "message": message,
             },
             status=HTTP_200_OK,
@@ -692,6 +696,7 @@ class ExerciseStepCompletionView(APIView):
                 "is_completed": completion_result.exercise_progress.is_finished,
                 "is_favorite": completion_result.favourite_exercise.is_favorite,
                 "suggested_days_per_week": completion_result.favourite_exercise.suggested_days_per_week,
+                "days_of_week": completion_result.favourite_exercise.days_of_week,
                 "current_streak_days": completion_result.favourite_exercise.current_streak_days,
                 "longest_streak_days": completion_result.favourite_exercise.longest_streak_days,
                 "program_progress": {

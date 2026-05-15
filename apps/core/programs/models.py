@@ -165,6 +165,7 @@ class UserFavouriteExercise(TimestampedModel):
         related_name="user_favourite_exercises",
     )
     suggested_days_per_week = models.PositiveSmallIntegerField()
+    days_of_week = models.JSONField(null=True, blank=True)
     current_streak_days = models.PositiveIntegerField(default=0)
     longest_streak_days = models.PositiveIntegerField(default=0)
     last_completed_on = models.DateField(null=True, blank=True)

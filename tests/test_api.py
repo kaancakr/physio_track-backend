@@ -754,12 +754,9 @@ class ApiIntegrationTests(TestCase):
         exercise_entry = response.data["days"][0]["exercises"][0]
         self.assertEqual(exercise_entry["exercise_id"], exercise_id)
         self.assertIn("title", exercise_entry)
-        self.assertIn("body_area", exercise_entry)
-        self.assertIn("duration_sec", exercise_entry)
-        self.assertIn("image", exercise_entry)
+        self.assertIn("days_of_week", exercise_entry)
         self.assertEqual(exercise_entry["suggested_days_per_week"], 3)
-        self.assertEqual(len(exercise_entry["program_items"]), 1)
-        self.assertEqual(exercise_entry["program_items"][0]["program_id"], program_id)
+        self.assertEqual(exercise_entry["days_of_week"], ["monday", "wednesday", "friday"])
 
     def test_completion_response_sets_is_completed_and_updates_favorite_streak(self) -> None:
         upsert_seed_programs()

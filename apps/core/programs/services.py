@@ -23,6 +23,26 @@ from apps.core.users.models import User
 
 logger = logging.getLogger(__name__)
 
+WEEKDAY_VALUES: tuple[str, ...] = (
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+)
+
+SUGGESTED_DAYS_OF_WEEK_BY_COUNT: dict[int, tuple[str, ...]] = {
+    1: ("monday",),
+    2: ("monday", "thursday"),
+    3: ("monday", "wednesday", "friday"),
+    4: ("monday", "tuesday", "thursday", "friday"),
+    5: ("monday", "tuesday", "wednesday", "thursday", "friday"),
+    6: ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday"),
+    7: WEEKDAY_VALUES,
+}
+
 
 @dataclass(frozen=True)
 class ExerciseProgressSnapshot:
@@ -62,6 +82,7 @@ class StepCompletionResult:
 class FavouriteExerciseSnapshot:
     is_favorite: bool
     suggested_days_per_week: int | None
+    days_of_week: list[str] | None
     current_streak_days: int | None
     longest_streak_days: int | None
 
@@ -288,6 +309,24 @@ def build_favourite_exercise_message(suggested_days_per_week: int) -> str:
     return f"{suggested_days_per_week} days a week is ok for this exercise."
 
 
+def build_suggested_days_of_week(suggested_days_per_week: int) -> list[str]:
+    suggested_days = SUGGESTED_DAYS_OF_WEEK_BY_COUNT.get(suggested_days_per_week)
+
+    if suggested_days is None:
+        raise ValueError(
+            f"Unsupported suggested_days_per_week value for weekday suggestion: {suggested_days_per_week}"
+        )
+
+    return list(suggested_days)
+
+
+def get_effective_days_of_week(favourite_exercise: UserFavouriteExercise) -> list[str]:
+    if favourite_exercise.days_of_week is not None:
+        return list(favourite_exercise.days_of_week)
+
+    return build_suggested_days_of_week(favourite_exercise.suggested_days_per_week)
+
+
 def build_favourite_exercise_snapshot(
     favourite_exercise: UserFavouriteExercise | None,
 ) -> FavouriteExerciseSnapshot:
@@ -295,6 +334,7 @@ def build_favourite_exercise_snapshot(
         return FavouriteExerciseSnapshot(
             is_favorite=False,
             suggested_days_per_week=None,
+            days_of_week=None,
             current_streak_days=None,
             longest_streak_days=None,
         )
@@ -302,6 +342,7 @@ def build_favourite_exercise_snapshot(
     return FavouriteExerciseSnapshot(
         is_favorite=True,
         suggested_days_per_week=favourite_exercise.suggested_days_per_week,
+        days_of_week=get_effective_days_of_week(favourite_exercise),
         current_streak_days=favourite_exercise.current_streak_days,
         longest_streak_days=favourite_exercise.longest_streak_days,
     )
@@ -374,15 +415,21 @@ def create_or_update_favourite_exercise(
     user: User,
     exercise: Exercise,
     is_favorite: bool,
+    days_of_week: list[str] | None,
 ) -> tuple[UserFavouriteExercise | None, str]:
     if is_favorite:
         suggested_days_per_week = get_suggested_days_per_week_for_user(user)
+        favourite_defaults: dict[str, object] = {
+            "suggested_days_per_week": suggested_days_per_week,
+        }
+
+        if days_of_week is not None:
+            favourite_defaults["days_of_week"] = days_of_week
+
         favourite_exercise, _ = UserFavouriteExercise.objects.update_or_create(
             user=user,
             exercise=exercise,
-            defaults={
-                "suggested_days_per_week": suggested_days_per_week,
-            },
+            defaults=favourite_defaults,
         )
         return favourite_exercise, build_favourite_exercise_message(suggested_days_per_week)
 

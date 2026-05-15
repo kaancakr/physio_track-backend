@@ -8,6 +8,7 @@ from apps.core.programs.services import (
     ExerciseProgressSnapshot,
     FavouriteExerciseSnapshot,
     ProgramProgressSnapshot,
+    WEEKDAY_VALUES,
     get_instruction_step_details,
 )
 
@@ -123,6 +124,9 @@ class FavouriteExerciseFieldsMixin:
     def get_suggested_days_per_week(self, obj: ExerciseProgramItem) -> int | None:
         return get_favourite_exercise(obj).suggested_days_per_week
 
+    def get_days_of_week(self, obj: ExerciseProgramItem) -> list[str] | None:
+        return get_favourite_exercise(obj).days_of_week
+
     def get_current_streak_days(self, obj: ExerciseProgramItem) -> int | None:
         return get_favourite_exercise(obj).current_streak_days
 
@@ -209,6 +213,7 @@ class ExerciseProgramExerciseListItemViewModel(
     is_completed = serializers.SerializerMethodField()
     is_favorite = serializers.SerializerMethodField()
     suggested_days_per_week = serializers.SerializerMethodField()
+    days_of_week = serializers.SerializerMethodField()
     current_streak_days = serializers.SerializerMethodField()
     longest_streak_days = serializers.SerializerMethodField()
 
@@ -231,6 +236,7 @@ class ExerciseProgramExerciseListItemViewModel(
             "is_completed",
             "is_favorite",
             "suggested_days_per_week",
+            "days_of_week",
             "current_streak_days",
             "longest_streak_days",
             "metadata",
@@ -273,6 +279,7 @@ class ExerciseProgramExerciseDetailViewModel(
     is_completed = serializers.SerializerMethodField()
     is_favorite = serializers.SerializerMethodField()
     suggested_days_per_week = serializers.SerializerMethodField()
+    days_of_week = serializers.SerializerMethodField()
     current_streak_days = serializers.SerializerMethodField()
     longest_streak_days = serializers.SerializerMethodField()
 
@@ -300,6 +307,7 @@ class ExerciseProgramExerciseDetailViewModel(
             "is_completed",
             "is_favorite",
             "suggested_days_per_week",
+            "days_of_week",
             "current_streak_days",
             "longest_streak_days",
             "metadata",
@@ -357,6 +365,7 @@ class ExerciseStepCompletionResponseViewModel(serializers.Serializer):
     is_completed = serializers.BooleanField()
     is_favorite = serializers.BooleanField()
     suggested_days_per_week = serializers.IntegerField(allow_null=True)
+    days_of_week = serializers.ListField(child=serializers.ChoiceField(choices=WEEKDAY_VALUES), allow_null=True)
     current_streak_days = serializers.IntegerField(allow_null=True)
     longest_streak_days = serializers.IntegerField(allow_null=True)
     program_progress = ExerciseStepCompletionProgramProgressViewModel
@@ -364,12 +373,32 @@ class ExerciseStepCompletionResponseViewModel(serializers.Serializer):
 
 class FavouriteExerciseUpdateRequestViewModel(serializers.Serializer):
     is_favorite = serializers.BooleanField()
+    days_of_week = serializers.ListField(
+        child=serializers.ChoiceField(choices=WEEKDAY_VALUES),
+        required=False,
+        allow_null=True,
+    )
+
+    def validate_days_of_week(self, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+
+        if len(value) == 0:
+            raise serializers.ValidationError("days_of_week must contain at least one day when provided.")
+
+        normalized_days_of_week = sorted(set(value), key=WEEKDAY_VALUES.index)
+
+        if len(normalized_days_of_week) != len(value):
+            raise serializers.ValidationError("days_of_week must not contain duplicate values.")
+
+        return normalized_days_of_week
 
 
 class FavouriteExerciseUpdateResponseViewModel(serializers.Serializer):
     exercise_id = serializers.UUIDField()
     is_favorite = serializers.BooleanField()
     suggested_days_per_week = serializers.IntegerField(allow_null=True)
+    days_of_week = serializers.ListField(child=serializers.ChoiceField(choices=WEEKDAY_VALUES), allow_null=True)
     message = serializers.CharField()
 
 
@@ -385,6 +414,7 @@ class FavouriteCalendarExerciseViewModel(serializers.Serializer):
     current_streak_days = serializers.IntegerField(allow_null=True)
     longest_streak_days = serializers.IntegerField(allow_null=True)
     suggested_days_per_week = serializers.IntegerField(allow_null=True)
+    days_of_week = serializers.ListField(child=serializers.ChoiceField(choices=WEEKDAY_VALUES), allow_null=True)
 
 
 class FavouriteCalendarDayViewModel(serializers.Serializer):
