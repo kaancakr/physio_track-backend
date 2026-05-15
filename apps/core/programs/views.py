@@ -242,6 +242,36 @@ def build_program_exercise_detail_etag(program_item: ExerciseProgramItem, reques
     )
 
 
+def build_favourite_calendar_etag(request, year: int, month: int) -> str:
+    favourite_queryset = request.user.favourite_exercises.filter(exercise__program_items__program__is_active=True).distinct()
+    favourite_aggregate = favourite_queryset.aggregate(
+        latest_favourite_updated_at=Max("updated_at"),
+        latest_exercise_updated_at=Max("exercise__updated_at"),
+        latest_program_item_updated_at=Max("exercise__program_items__updated_at"),
+        latest_program_updated_at=Max("exercise__program_items__program__updated_at"),
+    )
+    progress_aggregate = request.user.exercise_step_completions.filter(
+        exercise__user_favourite_exercises__user=request.user,
+        program__is_active=True,
+    ).aggregate(
+        latest_step_completion_updated_at=Max("updated_at"),
+    )
+
+    return serialize_etag_value(
+        "favourite-calendar",
+        request.user.id,
+        year,
+        month,
+        request.get_full_path(),
+        favourite_queryset.count(),
+        format_timestamp(favourite_aggregate["latest_favourite_updated_at"]),
+        format_timestamp(favourite_aggregate["latest_exercise_updated_at"]),
+        format_timestamp(favourite_aggregate["latest_program_item_updated_at"]),
+        format_timestamp(favourite_aggregate["latest_program_updated_at"]),
+        format_timestamp(progress_aggregate["latest_step_completion_updated_at"]),
+    )
+
+
 def attach_program_progress(programs: list[ExerciseProgram], user) -> None:
     all_program_items = [
         exercise_item
@@ -335,6 +365,10 @@ class FavouriteExerciseCalendarView(APIView):
         query_serializer.is_valid(raise_exception=True)
         year = int(query_serializer.validated_data["year"])
         month = int(query_serializer.validated_data["month"])
+        etag = build_favourite_calendar_etag(request, year=year, month=month)
+
+        if get_if_none_match_value(request) == etag:
+            return build_not_modified_response(etag)
 
         favourite_exercises = list(
             request.user.favourite_exercises.select_related("exercise")
@@ -379,7 +413,7 @@ class FavouriteExerciseCalendarView(APIView):
                 "days": build_calendar_days(year=year, month=month, exercises=exercises),
             }
         )
-        return Response(response_serializer.data, status=HTTP_200_OK)
+        return add_etag_header(Response(response_serializer.data, status=HTTP_200_OK), etag)
 
 
 @extend_schema_view(

@@ -852,6 +852,54 @@ class ApiIntegrationTests(TestCase):
         self.assertNotEqual(first_list_response.headers.get("ETag"), second_list_response.headers.get("ETag"))
         self.assertNotEqual(first_detail_response.headers.get("ETag"), second_detail_response.headers.get("ETag"))
 
+    def test_favorite_calendar_returns_etag_and_supports_not_modified(self) -> None:
+        upsert_seed_programs()
+        access_token, _ = self.signup_and_verify_user()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
+        url = reverse("favorite-exercise-calendar")
+
+        first_response = self.client.get(url, {"year": 2026, "month": 5})
+        etag = first_response.headers.get("ETag")
+        second_response = self.client.get(
+            url,
+            {"year": 2026, "month": 5},
+            HTTP_IF_NONE_MATCH=etag,
+        )
+
+        self.assertEqual(first_response.status_code, status.HTTP_200_OK)
+        self.assertIsNotNone(etag)
+        self.assertEqual(second_response.status_code, status.HTTP_304_NOT_MODIFIED)
+        self.assertEqual(second_response.headers.get("ETag"), etag)
+
+    def test_favorite_calendar_etag_changes_when_favorite_state_changes(self) -> None:
+        upsert_seed_programs()
+        access_token, _ = self.signup_and_verify_user()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
+        program_id = self.get_neck_program_id()
+        exercise_id = self.get_program_exercise_ids(program_id)[0]
+        url = reverse("favorite-exercise-calendar")
+
+        first_response = self.client.get(url, {"year": 2026, "month": 5})
+
+        self.client.post(
+            reverse(
+                "program-exercise-favorite-update",
+                kwargs={"id": program_id, "exercise_id": exercise_id},
+            ),
+            {"is_favorite": True},
+            format="json",
+        )
+
+        second_response = self.client.get(
+            url,
+            {"year": 2026, "month": 5},
+            HTTP_IF_NONE_MATCH=first_response.headers.get("ETag"),
+        )
+
+        self.assertEqual(first_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_response.status_code, status.HTTP_200_OK)
+        self.assertNotEqual(first_response.headers.get("ETag"), second_response.headers.get("ETag"))
+
     def test_program_list_returns_etag_and_supports_not_modified(self) -> None:
         upsert_seed_programs()
         access_token, _ = self.signup_and_verify_user()
