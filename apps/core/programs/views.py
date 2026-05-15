@@ -39,8 +39,8 @@ from apps.core.programs.services import (
     get_program_item,
 )
 from apps.core.programs.viewmodels import (
+    FavouriteCalendarViewModel,
     FavouriteExerciseCalendarQueryViewModel,
-    FavouriteExerciseCalendarResponseViewModel,
     FavouriteExerciseUpdateRequestViewModel,
     FavouriteExerciseUpdateResponseViewModel,
     ExerciseStepCompletionResponseViewModel,
@@ -318,7 +318,7 @@ def build_calendar_days(
         description="Return month date buckets containing the current user's favourited exercises.",
         parameters=FAVOURITE_CALENDAR_PARAMETERS,
         responses={
-            200: FavouriteExerciseCalendarResponseViewModel,
+            200: FavouriteCalendarViewModel,
             400: BAD_REQUEST_RESPONSE,
             401: UNAUTHORIZED_RESPONSE,
             403: FORBIDDEN_RESPONSE,
@@ -365,32 +365,14 @@ class FavouriteExerciseCalendarView(APIView):
                 {
                     "exercise_id": favourite_exercise.exercise_id,
                     "title": favourite_exercise.exercise.title,
-                    "body_area": favourite_exercise.exercise.body_area,
-                    "duration_sec": favourite_exercise.exercise.duration_sec,
-                    "image": {
-                        "url": favourite_exercise.exercise.image_url,
-                        "thumbnail_url": favourite_exercise.exercise.image_thumbnail_url,
-                        "width": favourite_exercise.exercise.image_width,
-                        "height": favourite_exercise.exercise.image_height,
-                        "alt": favourite_exercise.exercise.image_alt,
-                    },
                     "is_completed": is_completed,
                     "current_streak_days": favourite_exercise.current_streak_days,
                     "longest_streak_days": favourite_exercise.longest_streak_days,
                     "suggested_days_per_week": favourite_exercise.suggested_days_per_week,
-                    "program_items": [
-                        {
-                            "program_id": program_item.program_id,
-                            "program_title": program_item.program.title,
-                            "item_id": program_item.id,
-                            "exercise_order": program_item.exercise_order,
-                        }
-                        for program_item in active_program_items
-                    ],
                 }
             )
 
-        response_serializer = FavouriteExerciseCalendarResponseViewModel(
+        response_serializer = FavouriteCalendarViewModel(
             {
                 "year": year,
                 "month": month,

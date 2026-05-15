@@ -378,25 +378,21 @@ class FavouriteExerciseCalendarQueryViewModel(serializers.Serializer):
     month = serializers.IntegerField(min_value=1, max_value=12)
 
 
-class FavouriteExerciseCalendarExerciseViewModel(serializers.Serializer):
+class FavouriteCalendarExerciseViewModel(serializers.Serializer):
     exercise_id = serializers.UUIDField()
     title = serializers.CharField()
-    body_area = serializers.CharField()
-    duration_sec = serializers.IntegerField()
-    image = ExerciseImageViewModel()
     is_completed = serializers.BooleanField()
     current_streak_days = serializers.IntegerField(allow_null=True)
     longest_streak_days = serializers.IntegerField(allow_null=True)
     suggested_days_per_week = serializers.IntegerField(allow_null=True)
-    program_items = serializers.ListSerializer(child=ExerciseFavouriteProgramItemViewModel)
 
 
-class FavouriteExerciseCalendarDayViewModel(serializers.Serializer):
+class FavouriteCalendarDayViewModel(serializers.Serializer):
     date = serializers.DateField()
-    exercises = FavouriteExerciseCalendarExerciseViewModel(many=True)
+    exercises = FavouriteCalendarExerciseViewModel(many=True)
 
 
-class FavouriteExerciseCalendarResponseViewModel(serializers.Serializer):
+class FavouriteCalendarViewModel(serializers.Serializer):
     year = serializers.IntegerField()
     month = serializers.IntegerField()
-    days = serializers.ListSerializer(child=FavouriteExerciseCalendarDayViewModel())
+    days = serializers.ListSerializer(child=FavouriteCalendarDayViewModel())
