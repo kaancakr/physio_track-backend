@@ -9,7 +9,6 @@ from apps.core.programs.services import (
     FavouriteExerciseSnapshot,
     ProgramProgressSnapshot,
     get_instruction_step_details,
-    get_instruction_steps,
 )
 
 
@@ -322,45 +321,17 @@ class ExerciseProgramExerciseDetailViewModel(
 
     @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_instruction_steps(self, obj: ExerciseProgramItem) -> list[str]:
-        return get_instruction_steps(obj.exercise)
+        return [
+            str(step["instruction"])
+            for step in get_instruction_step_details(obj.exercise)
+        ]
 
     @extend_schema_field(serializers.ListSerializer(child=ExerciseImageViewModel()))
     def get_instruction_step_images(self, obj: ExerciseProgramItem) -> list[dict[str, str | int | None]]:
-        instruction_step_images = obj.exercise.metadata.get("instruction_step_images", [])
-        instruction_steps = get_instruction_steps(obj.exercise)
-
-        if not isinstance(instruction_step_images, list):
-            instruction_step_images = []
-
-        normalized_images: list[dict[str, str | int | None]] = []
-
-        for image in instruction_step_images:
-            if not isinstance(image, dict):
-                continue
-
-            normalized_images.append(
-                {
-                    "url": image.get("url", ""),
-                    "thumbnail_url": image.get("thumbnail_url", ""),
-                    "width": image.get("width"),
-                    "height": image.get("height"),
-                    "alt": image.get("alt", ""),
-                }
-            )
-
-        if len(normalized_images) == 0 and len(instruction_steps) > 0:
-            return [
-                {
-                    "url": "",
-                    "thumbnail_url": "",
-                    "width": None,
-                    "height": None,
-                    "alt": instruction_step,
-                }
-                for instruction_step in instruction_steps
-            ]
-
-        return normalized_images
+        return [
+            dict(step["image"])
+            for step in get_instruction_step_details(obj.exercise)
+        ]
 
     @extend_schema_field(TimingViewModel)
     def get_timing(self, obj: ExerciseProgramItem) -> dict[str, str | int]:
@@ -412,6 +383,7 @@ class FavouriteExerciseCalendarExerciseViewModel(serializers.Serializer):
     title = serializers.CharField()
     body_area = serializers.CharField()
     duration_sec = serializers.IntegerField()
+    image = ExerciseImageViewModel()
     is_completed = serializers.BooleanField()
     current_streak_days = serializers.IntegerField(allow_null=True)
     longest_streak_days = serializers.IntegerField(allow_null=True)

@@ -34,8 +34,8 @@ from apps.core.programs.services import (
     build_favourite_exercise_snapshot,
     complete_exercise_step,
     create_or_update_favourite_exercise,
+    get_exercise_progress_by_program_item_for_user,
     get_favourite_exercises_by_exercise_id_for_user,
-    get_exercise_progress_for_user,
     get_program_item,
 )
 from apps.core.programs.viewmodels import (
@@ -243,16 +243,24 @@ def build_program_exercise_detail_etag(program_item: ExerciseProgramItem, reques
 
 
 def attach_program_progress(programs: list[ExerciseProgram], user) -> None:
+    all_program_items = [
+        exercise_item
+        for program in programs
+        for exercise_item in program.exercise_items.all()
+    ]
+    exercise_progress_by_program_and_exercise = get_exercise_progress_by_program_item_for_user(
+        user=user,
+        program_items=all_program_items,
+    )
+
     for program in programs:
         exercise_items = list(program.exercise_items.all())
         progress_by_exercise_id = {}
 
         for exercise_item in exercise_items:
-            exercise_progress = get_exercise_progress_for_user(
-                user=user,
-                program=program,
-                exercise=exercise_item.exercise,
-            )
+            exercise_progress = exercise_progress_by_program_and_exercise[
+                (str(exercise_item.program_id), str(exercise_item.exercise_id))
+            ]
             exercise_item.current_user_exercise_progress = exercise_progress
             progress_by_exercise_id[str(exercise_item.exercise_id)] = exercise_progress
 
@@ -270,17 +278,19 @@ def attach_empty_program_progress(programs: list[ExerciseProgram]) -> None:
 
 
 def attach_exercise_progress(program_items: list[ExerciseProgramItem], user) -> None:
+    exercise_progress_by_program_and_exercise = get_exercise_progress_by_program_item_for_user(
+        user=user,
+        program_items=program_items,
+    )
     favourite_exercises_by_exercise_id = get_favourite_exercises_by_exercise_id_for_user(
         user=user,
         exercise_ids=[str(program_item.exercise_id) for program_item in program_items],
     )
 
     for program_item in program_items:
-        program_item.current_user_exercise_progress = get_exercise_progress_for_user(
-            user=user,
-            program=program_item.program,
-            exercise=program_item.exercise,
-        )
+        program_item.current_user_exercise_progress = exercise_progress_by_program_and_exercise[
+            (str(program_item.program_id), str(program_item.exercise_id))
+        ]
         program_item.current_user_favourite_exercise = build_favourite_exercise_snapshot(
             favourite_exercises_by_exercise_id.get(str(program_item.exercise_id))
         )
@@ -339,12 +349,17 @@ class FavouriteExerciseCalendarView(APIView):
             )
             .order_by("exercise__title")
         )
+        all_active_program_items = [
+            program_item
+            for favourite_exercise in favourite_exercises
+            for program_item in getattr(favourite_exercise.exercise, "active_program_items", [])
+        ]
+        attach_exercise_progress(all_active_program_items, request.user)
 
         exercises: list[dict[str, object]] = []
 
         for favourite_exercise in favourite_exercises:
             active_program_items = getattr(favourite_exercise.exercise, "active_program_items", [])
-            attach_exercise_progress(active_program_items, request.user)
             is_completed = any(program_item.current_user_exercise_progress.is_finished for program_item in active_program_items)
             exercises.append(
                 {
@@ -352,6 +367,13 @@ class FavouriteExerciseCalendarView(APIView):
                     "title": favourite_exercise.exercise.title,
                     "body_area": favourite_exercise.exercise.body_area,
                     "duration_sec": favourite_exercise.exercise.duration_sec,
+                    "image": {
+                        "url": favourite_exercise.exercise.image_url,
+                        "thumbnail_url": favourite_exercise.exercise.image_thumbnail_url,
+                        "width": favourite_exercise.exercise.image_width,
+                        "height": favourite_exercise.exercise.image_height,
+                        "alt": favourite_exercise.exercise.image_alt,
+                    },
                     "is_completed": is_completed,
                     "current_streak_days": favourite_exercise.current_streak_days,
                     "longest_streak_days": favourite_exercise.longest_streak_days,

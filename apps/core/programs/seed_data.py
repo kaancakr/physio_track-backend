@@ -149,10 +149,14 @@ def build_seed_exercise_metadata(
         remaining_steps = normalized_instruction_steps[len(normalized_instruction_step_images) :]
         normalized_instruction_step_images.extend(build_instruction_step_images(remaining_steps))
 
+    metadata_without_legacy_step_fields = {
+        key: value
+        for key, value in metadata.items()
+        if key not in {"instruction_steps", "instruction_step_images", "steps"}
+    }
+
     return {
-        **metadata,
-        "instruction_steps": normalized_instruction_steps,
-        "instruction_step_images": normalized_instruction_step_images,
+        **metadata_without_legacy_step_fields,
         "steps": build_instruction_step_details(
             instruction_steps=normalized_instruction_steps,
             instruction_step_images=normalized_instruction_step_images,
