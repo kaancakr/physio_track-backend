@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from calendar import monthrange
+from datetime import date
 import hashlib
 
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
@@ -29,11 +31,18 @@ from apps.core.programs.models import ExerciseProgram, ExerciseProgramItem
 from apps.core.programs.services import (
     ProgramProgressSnapshot,
     build_program_progress,
+    build_favourite_exercise_snapshot,
     complete_exercise_step,
+    create_or_update_favourite_exercise,
+    get_favourite_exercises_by_exercise_id_for_user,
     get_exercise_progress_for_user,
     get_program_item,
 )
 from apps.core.programs.viewmodels import (
+    FavouriteExerciseCalendarQueryViewModel,
+    FavouriteExerciseCalendarResponseViewModel,
+    FavouriteExerciseUpdateRequestViewModel,
+    FavouriteExerciseUpdateResponseViewModel,
     ExerciseStepCompletionResponseViewModel,
     ExerciseProgramExerciseDetailViewModel,
     ExerciseProgramExerciseListItemViewModel,
@@ -64,6 +73,23 @@ PROGRAM_LIST_PARAMETERS = [
         type=str,
         location=OpenApiParameter.QUERY,
         description="Search programs by title, description, or focus area label.",
+    ),
+]
+
+FAVOURITE_CALENDAR_PARAMETERS = [
+    OpenApiParameter(
+        name="year",
+        type=int,
+        location=OpenApiParameter.QUERY,
+        description="Calendar year.",
+        required=True,
+    ),
+    OpenApiParameter(
+        name="month",
+        type=int,
+        location=OpenApiParameter.QUERY,
+        description="Calendar month as a number between 1 and 12.",
+        required=True,
     ),
 ]
 
@@ -174,6 +200,9 @@ def build_program_exercise_list_etag(program_id: str, queryset, request) -> str:
     user_progress_aggregate = queryset.filter(exercise__step_completions__user=request.user).aggregate(
         latest_step_completion_updated_at=Max("exercise__step_completions__updated_at"),
     )
+    favourite_aggregate = queryset.filter(exercise__user_favourite_exercises__user=request.user).aggregate(
+        latest_favourite_updated_at=Max("exercise__user_favourite_exercises__updated_at"),
+    )
 
     return serialize_etag_value(
         "program-exercise-list",
@@ -184,6 +213,7 @@ def build_program_exercise_list_etag(program_id: str, queryset, request) -> str:
         format_timestamp(aggregate["latest_program_item_updated_at"]),
         format_timestamp(aggregate["latest_exercise_updated_at"]),
         format_timestamp(user_progress_aggregate["latest_step_completion_updated_at"]),
+        format_timestamp(favourite_aggregate["latest_favourite_updated_at"]),
     )
 
 
@@ -193,6 +223,9 @@ def build_program_exercise_detail_etag(program_item: ExerciseProgramItem, reques
         program=program_item.program,
     ).aggregate(
         latest_step_completion_updated_at=Max("updated_at"),
+    )
+    latest_favourite_update = program_item.exercise.user_favourite_exercises.filter(user=request.user).aggregate(
+        latest_favourite_updated_at=Max("updated_at"),
     )
 
     return serialize_etag_value(
@@ -205,6 +238,7 @@ def build_program_exercise_detail_etag(program_item: ExerciseProgramItem, reques
         format_timestamp(program_item.exercise.updated_at),
         format_timestamp(program_item.program.updated_at),
         format_timestamp(latest_step_completion["latest_step_completion_updated_at"]),
+        format_timestamp(latest_favourite_update["latest_favourite_updated_at"]),
     )
 
 
@@ -236,12 +270,112 @@ def attach_empty_program_progress(programs: list[ExerciseProgram]) -> None:
 
 
 def attach_exercise_progress(program_items: list[ExerciseProgramItem], user) -> None:
+    favourite_exercises_by_exercise_id = get_favourite_exercises_by_exercise_id_for_user(
+        user=user,
+        exercise_ids=[str(program_item.exercise_id) for program_item in program_items],
+    )
+
     for program_item in program_items:
         program_item.current_user_exercise_progress = get_exercise_progress_for_user(
             user=user,
             program=program_item.program,
             exercise=program_item.exercise,
         )
+        program_item.current_user_favourite_exercise = build_favourite_exercise_snapshot(
+            favourite_exercises_by_exercise_id.get(str(program_item.exercise_id))
+        )
+
+
+def build_calendar_days(
+    year: int,
+    month: int,
+    exercises: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    days_in_month = monthrange(year, month)[1]
+    return [
+        {
+            "date": date(year, month, day_number),
+            "exercises": exercises,
+        }
+        for day_number in range(1, days_in_month + 1)
+    ]
+
+
+@extend_schema_view(
+    get=extend_schema(
+        operation_id="get_favorite_exercise_calendar",
+        summary="Get favourite exercises for the calendar",
+        description="Return month date buckets containing the current user's favourited exercises.",
+        parameters=FAVOURITE_CALENDAR_PARAMETERS,
+        responses={
+            200: FavouriteExerciseCalendarResponseViewModel,
+            400: BAD_REQUEST_RESPONSE,
+            401: UNAUTHORIZED_RESPONSE,
+            403: FORBIDDEN_RESPONSE,
+            429: THROTTLED_RESPONSE,
+        },
+    )
+)
+class FavouriteExerciseCalendarView(APIView):
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [UserRateThrottle]
+
+    def get(self, request):
+        query_serializer = FavouriteExerciseCalendarQueryViewModel(data=request.query_params)
+        query_serializer.is_valid(raise_exception=True)
+        year = int(query_serializer.validated_data["year"])
+        month = int(query_serializer.validated_data["month"])
+
+        favourite_exercises = list(
+            request.user.favourite_exercises.select_related("exercise")
+            .prefetch_related(
+                Prefetch(
+                    "exercise__program_items",
+                    queryset=ExerciseProgramItem.objects.select_related("program", "exercise")
+                    .filter(program__is_active=True)
+                    .order_by("program__title", "exercise_order"),
+                    to_attr="active_program_items",
+                )
+            )
+            .order_by("exercise__title")
+        )
+
+        exercises: list[dict[str, object]] = []
+
+        for favourite_exercise in favourite_exercises:
+            active_program_items = getattr(favourite_exercise.exercise, "active_program_items", [])
+            attach_exercise_progress(active_program_items, request.user)
+            is_completed = any(program_item.current_user_exercise_progress.is_finished for program_item in active_program_items)
+            exercises.append(
+                {
+                    "exercise_id": favourite_exercise.exercise_id,
+                    "title": favourite_exercise.exercise.title,
+                    "body_area": favourite_exercise.exercise.body_area,
+                    "duration_sec": favourite_exercise.exercise.duration_sec,
+                    "is_completed": is_completed,
+                    "current_streak_days": favourite_exercise.current_streak_days,
+                    "longest_streak_days": favourite_exercise.longest_streak_days,
+                    "suggested_days_per_week": favourite_exercise.suggested_days_per_week,
+                    "program_items": [
+                        {
+                            "program_id": program_item.program_id,
+                            "program_title": program_item.program.title,
+                            "item_id": program_item.id,
+                            "exercise_order": program_item.exercise_order,
+                        }
+                        for program_item in active_program_items
+                    ],
+                }
+            )
+
+        response_serializer = FavouriteExerciseCalendarResponseViewModel(
+            {
+                "year": year,
+                "month": month,
+                "days": build_calendar_days(year=year, month=month, exercises=exercises),
+            }
+        )
+        return Response(response_serializer.data, status=HTTP_200_OK)
 
 
 @extend_schema_view(
@@ -438,6 +572,51 @@ class ProgramExerciseDetailView(RetrieveAPIView):
 
 @extend_schema_view(
     post=extend_schema(
+        operation_id="update_exercise_favorite",
+        summary="Add or remove an exercise favourite",
+        description="Create or remove a favourite exercise for the authenticated user.",
+        parameters=[PROGRAM_ID_PATH_PARAMETER, EXERCISE_ID_PATH_PARAMETER],
+        request=FavouriteExerciseUpdateRequestViewModel,
+        responses={
+            200: FavouriteExerciseUpdateResponseViewModel,
+            400: BAD_REQUEST_RESPONSE,
+            401: UNAUTHORIZED_RESPONSE,
+            403: FORBIDDEN_RESPONSE,
+            404: NOT_FOUND_RESPONSE,
+            429: THROTTLED_RESPONSE,
+        },
+    )
+)
+class ExerciseFavouriteUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [UserRateThrottle]
+
+    def post(self, request, id: str, exercise_id: str):
+        serializer = FavouriteExerciseUpdateRequestViewModel(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        program_item = get_program_item(program_id=id, exercise_id=exercise_id)
+        favourite_exercise, message = create_or_update_favourite_exercise(
+            user=request.user,
+            exercise=program_item.exercise,
+            is_favorite=bool(serializer.validated_data["is_favorite"]),
+        )
+        favourite_snapshot = build_favourite_exercise_snapshot(favourite_exercise)
+
+        return Response(
+            {
+                "exercise_id": str(program_item.exercise_id),
+                "is_favorite": favourite_snapshot.is_favorite,
+                "suggested_days_per_week": favourite_snapshot.suggested_days_per_week,
+                "current_streak_days": favourite_snapshot.current_streak_days,
+                "longest_streak_days": favourite_snapshot.longest_streak_days,
+                "message": message,
+            },
+            status=HTTP_200_OK,
+        )
+
+
+@extend_schema_view(
+    post=extend_schema(
         operation_id="complete_exercise_step",
         summary="Complete the next exercise step",
         description="Mark the next required instruction step as completed for the authenticated user.",
@@ -474,6 +653,11 @@ class ExerciseStepCompletionView(APIView):
                 "steps_count": completion_result.exercise_progress.steps_count,
                 "next_step_index": completion_result.exercise_progress.next_step_index,
                 "is_finished": completion_result.exercise_progress.is_finished,
+                "is_completed": completion_result.exercise_progress.is_finished,
+                "is_favorite": completion_result.favourite_exercise.is_favorite,
+                "suggested_days_per_week": completion_result.favourite_exercise.suggested_days_per_week,
+                "current_streak_days": completion_result.favourite_exercise.current_streak_days,
+                "longest_streak_days": completion_result.favourite_exercise.longest_streak_days,
                 "program_progress": {
                     "exercises_count": completion_result.program_progress.exercises_count,
                     "completed_exercises_count": completion_result.program_progress.completed_exercises_count,

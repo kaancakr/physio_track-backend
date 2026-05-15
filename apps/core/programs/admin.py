@@ -6,6 +6,7 @@ from apps.core.programs.models import (
     ExerciseProgramCompletion,
     ExerciseProgramItem,
     ExerciseStepCompletion,
+    UserFavouriteExercise,
 )
 
 
@@ -57,3 +58,17 @@ class ExerciseStepCompletionAdmin(admin.ModelAdmin):
     list_display = ("user", "program", "exercise", "step_index", "completed_at")
     list_filter = ("program__focus_area", "exercise__body_area")
     search_fields = ("user__email", "program__code", "exercise__code", "exercise__title")
+
+
+@admin.register(UserFavouriteExercise)
+class UserFavouriteExerciseAdmin(admin.ModelAdmin):
+    list_display = (
+        "user",
+        "exercise",
+        "suggested_days_per_week",
+        "current_streak_days",
+        "longest_streak_days",
+        "last_completed_on",
+    )
+    list_filter = ("exercise__body_area", "suggested_days_per_week")
+    search_fields = ("user__email", "exercise__code", "exercise__title")

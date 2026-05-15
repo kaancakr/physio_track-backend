@@ -1,15 +1,23 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
 from dataclasses import dataclass
 import logging
 from typing import Iterable
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from apps.core.logging_utils import build_log_extra
-from apps.core.programs.models import Exercise, ExerciseProgram, ExerciseProgramItem, ExerciseStepCompletion
+from apps.core.programs.models import (
+    Exercise,
+    ExerciseProgram,
+    ExerciseProgramItem,
+    ExerciseStepCompletion,
+    UserFavouriteExercise,
+)
 from apps.core.programs.seed_data import PROGRAM_SEED_DATA
 from apps.core.users.models import User
 
@@ -47,6 +55,15 @@ class UserOverallProgressSnapshot:
 class StepCompletionResult:
     exercise_progress: ExerciseProgressSnapshot
     program_progress: ProgramProgressSnapshot
+    favourite_exercise: FavouriteExerciseSnapshot
+
+
+@dataclass(frozen=True)
+class FavouriteExerciseSnapshot:
+    is_favorite: bool
+    suggested_days_per_week: int | None
+    current_streak_days: int | None
+    longest_streak_days: int | None
 
 
 def build_instruction_step_images(instruction_steps: list[str]) -> list[dict[str, str | int | None]]:
@@ -230,6 +247,116 @@ def build_program_progress(
     )
 
 
+def build_favourite_exercise_message(suggested_days_per_week: int) -> str:
+    return f"{suggested_days_per_week} days a week is ok for this exercise."
+
+
+def build_favourite_exercise_snapshot(
+    favourite_exercise: UserFavouriteExercise | None,
+) -> FavouriteExerciseSnapshot:
+    if favourite_exercise is None:
+        return FavouriteExerciseSnapshot(
+            is_favorite=False,
+            suggested_days_per_week=None,
+            current_streak_days=None,
+            longest_streak_days=None,
+        )
+
+    return FavouriteExerciseSnapshot(
+        is_favorite=True,
+        suggested_days_per_week=favourite_exercise.suggested_days_per_week,
+        current_streak_days=favourite_exercise.current_streak_days,
+        longest_streak_days=favourite_exercise.longest_streak_days,
+    )
+
+
+def get_suggested_days_per_week_for_user(user: User) -> int:
+    try:
+        return int(user.profile.weekly_goal)
+    except ObjectDoesNotExist:
+        return 3
+
+
+def get_favourite_exercises_by_exercise_id_for_user(
+    user: User,
+    exercise_ids: list[str],
+) -> dict[str, UserFavouriteExercise]:
+    favourite_exercises = UserFavouriteExercise.objects.filter(
+        user=user,
+        exercise_id__in=exercise_ids,
+    ).select_related("exercise")
+    return {str(favourite_exercise.exercise_id): favourite_exercise for favourite_exercise in favourite_exercises}
+
+
+def get_favourite_exercise_for_user(
+    user: User,
+    exercise: Exercise,
+) -> UserFavouriteExercise | None:
+    return (
+        UserFavouriteExercise.objects.filter(
+            user=user,
+            exercise=exercise,
+        )
+        .select_related("exercise")
+        .first()
+    )
+
+
+def update_favourite_exercise_streak(
+    favourite_exercise: UserFavouriteExercise,
+    completed_on: date,
+) -> UserFavouriteExercise:
+    previous_completed_on = favourite_exercise.last_completed_on
+
+    if previous_completed_on is None:
+        current_streak_days = 1
+    elif previous_completed_on == completed_on:
+        current_streak_days = favourite_exercise.current_streak_days
+    elif previous_completed_on == completed_on - timedelta(days=1):
+        current_streak_days = favourite_exercise.current_streak_days + 1
+    else:
+        current_streak_days = 1
+
+    longest_streak_days = max(favourite_exercise.longest_streak_days, current_streak_days)
+
+    favourite_exercise.current_streak_days = current_streak_days
+    favourite_exercise.longest_streak_days = longest_streak_days
+    favourite_exercise.last_completed_on = completed_on
+    favourite_exercise.save(
+        update_fields=[
+            "current_streak_days",
+            "longest_streak_days",
+            "last_completed_on",
+            "updated_at",
+        ]
+    )
+    return favourite_exercise
+
+
+def create_or_update_favourite_exercise(
+    user: User,
+    exercise: Exercise,
+    is_favorite: bool,
+) -> tuple[UserFavouriteExercise | None, str]:
+    if is_favorite:
+        suggested_days_per_week = get_suggested_days_per_week_for_user(user)
+        favourite_exercise, _ = UserFavouriteExercise.objects.update_or_create(
+            user=user,
+            exercise=exercise,
+            defaults={
+                "suggested_days_per_week": suggested_days_per_week,
+            },
+        )
+        return favourite_exercise, build_favourite_exercise_message(suggested_days_per_week)
+
+    deleted_count, _ = UserFavouriteExercise.objects.filter(user=user, exercise=exercise).delete()
+
+    if deleted_count == 0:
+        return None, "Exercise was already removed from favourites."
+
+    return None, "Exercise removed from favourites."
+
+
 def get_program_item(
     program_id: str,
     exercise_id: str,
@@ -301,6 +428,22 @@ def validate_next_step_index(
             {
                 "step_index": [
                     f"Step {requested_step_index} cannot be completed yet. The next required step is {next_step_index}.",
+                ],
+            }
+        )
+
+
+def validate_repeat_completion_step_index(
+    requested_step_index: int,
+    steps_count: int,
+) -> None:
+    final_step_index = steps_count - 1
+
+    if requested_step_index != final_step_index:
+        raise ValidationError(
+            {
+                "step_index": [
+                    f"Exercise is already completed. Repeat completion requests must target the final step {final_step_index}.",
                 ],
             }
         )
@@ -416,6 +559,31 @@ def get_user_overall_progress_for_user(user: User) -> UserOverallProgressSnapsho
     )
 
 
+def build_repeat_completion_result(
+    user: User,
+    program_item: ExerciseProgramItem,
+    current_progress: ExerciseProgressSnapshot,
+) -> StepCompletionResult:
+    favourite_exercise = (
+        UserFavouriteExercise.objects.select_for_update()
+        .filter(user=user, exercise=program_item.exercise)
+        .select_related("exercise")
+        .first()
+    )
+
+    if favourite_exercise is not None:
+        update_favourite_exercise_streak(favourite_exercise, timezone.localdate())
+
+    return StepCompletionResult(
+        exercise_progress=current_progress,
+        program_progress=get_program_progress_for_user(
+            user=user,
+            program=program_item.program,
+        ),
+        favourite_exercise=build_favourite_exercise_snapshot(favourite_exercise),
+    )
+
+
 @transaction.atomic
 def complete_exercise_step(
     user: User,
@@ -433,6 +601,14 @@ def complete_exercise_step(
         )
     )
     current_progress = build_exercise_progress(program_item.exercise, get_completed_step_indexes(current_completions))
+
+    if current_progress.is_finished:
+        validate_repeat_completion_step_index(step_index, len(instruction_steps))
+        return build_repeat_completion_result(
+            user=user,
+            program_item=program_item,
+            current_progress=current_progress,
+        )
 
     validate_next_step_index(step_index, current_progress.next_step_index)
 
@@ -469,6 +645,16 @@ def complete_exercise_step(
         program=program_item.program,
         exercise=program_item.exercise,
     )
+    favourite_exercise = (
+        UserFavouriteExercise.objects.select_for_update()
+        .filter(user=user, exercise=program_item.exercise)
+        .select_related("exercise")
+        .first()
+    )
+
+    if updated_exercise_progress.is_finished and favourite_exercise is not None:
+        update_favourite_exercise_streak(favourite_exercise, timezone.localdate())
+
     updated_program_progress = get_program_progress_for_user(
         user=user,
         program=program_item.program,
@@ -488,6 +674,7 @@ def complete_exercise_step(
     return StepCompletionResult(
         exercise_progress=updated_exercise_progress,
         program_progress=updated_program_progress,
+        favourite_exercise=build_favourite_exercise_snapshot(favourite_exercise),
     )
 
 

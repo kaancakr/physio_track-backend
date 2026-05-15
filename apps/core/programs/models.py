@@ -151,3 +151,32 @@ class ExerciseStepCompletion(TimestampedModel):
 
     def __str__(self) -> str:
         return f"{self.user_id}:{self.program_id}:{self.exercise_id}:{self.step_index}"
+
+
+class UserFavouriteExercise(TimestampedModel):
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="favourite_exercises",
+    )
+    exercise = models.ForeignKey(
+        Exercise,
+        on_delete=models.CASCADE,
+        related_name="user_favourite_exercises",
+    )
+    suggested_days_per_week = models.PositiveSmallIntegerField()
+    current_streak_days = models.PositiveIntegerField(default=0)
+    longest_streak_days = models.PositiveIntegerField(default=0)
+    last_completed_on = models.DateField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["user_id", "exercise_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=("user", "exercise"),
+                name="unique_user_favourite_exercise",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user_id}:{self.exercise_id}:{self.suggested_days_per_week}"

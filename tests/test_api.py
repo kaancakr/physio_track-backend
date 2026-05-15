@@ -1,5 +1,7 @@
+from datetime import datetime, timezone
 import re
 import uuid
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core import mail
@@ -67,6 +69,22 @@ class ApiIntegrationTests(TestCase):
         self.assertEqual(exercises_response.status_code, status.HTTP_200_OK)
 
         return [str(exercise["id"]) for exercise in exercises_response.data]
+
+    def complete_all_exercise_steps(self, program_id: str, exercise_id: str) -> None:
+        detail_response = self.client.get(
+            reverse("program-exercise-detail", kwargs={"id": program_id, "exercise_id": exercise_id})
+        )
+        self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
+
+        for step_index in range(detail_response.data["steps_count"]):
+            completion_response = self.client.post(
+                reverse(
+                    "exercise-step-complete",
+                    kwargs={"id": program_id, "exercise_id": exercise_id, "step_index": step_index},
+                ),
+                format="json",
+            )
+            self.assertEqual(completion_response.status_code, status.HTTP_200_OK)
 
     def test_signup_creates_unverified_user_and_sends_email(self) -> None:
         response = self.client.post(reverse("signup"), self.signup_payload, format="json")
@@ -388,6 +406,9 @@ class ApiIntegrationTests(TestCase):
         self.assertEqual(exercises_response.data[0]["exercise_order"], 1)
         self.assertEqual(len(exercises_response.data), 13)
         self.assertFalse(detail_response.data["is_finished"])
+        self.assertFalse(detail_response.data["is_completed"])
+        self.assertFalse(detail_response.data["is_favorite"])
+        self.assertIsNone(detail_response.data["suggested_days_per_week"])
         self.assertEqual(detail_response.data["completed_step_indexes"], [])
         self.assertIn("steps", detail_response.data)
         self.assertIn("instruction_steps", detail_response.data)
@@ -478,6 +499,8 @@ class ApiIntegrationTests(TestCase):
         self.assertEqual(response.data[0]["completed_steps_count"], 0)
         self.assertEqual(response.data[0]["next_step_index"], 0)
         self.assertFalse(response.data[0]["is_finished"])
+        self.assertFalse(response.data[0]["is_completed"])
+        self.assertFalse(response.data[0]["is_favorite"])
 
     def test_user_cannot_complete_step_out_of_order(self) -> None:
         upsert_seed_programs()
@@ -556,6 +579,7 @@ class ApiIntegrationTests(TestCase):
 
         self.assertEqual(final_exercise_detail_response.data["next_step_index"], None)
         self.assertTrue(final_exercise_detail_response.data["is_finished"])
+        self.assertTrue(final_exercise_detail_response.data["is_completed"])
         self.assertEqual(final_exercise_detail_response.data["completed_steps_count"], final_exercise_detail_response.data["steps_count"])
         self.assertEqual(len(matching_programs), 1)
         self.assertEqual(matching_programs[0]["completed_exercises_count"], matching_programs[0]["exercises_count"])
@@ -652,6 +676,177 @@ class ApiIntegrationTests(TestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_user_can_favorite_and_unfavorite_exercise(self) -> None:
+        upsert_seed_programs()
+        access_token, _ = self.signup_and_verify_user()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
+        program_id = self.get_neck_program_id()
+        exercise_id = self.get_program_exercise_ids(program_id)[0]
+
+        favorite_response = self.client.post(
+            reverse(
+                "program-exercise-favorite-update",
+                kwargs={"id": program_id, "exercise_id": exercise_id},
+            ),
+            {"is_favorite": True},
+            format="json",
+        )
+        detail_response = self.client.get(
+            reverse("program-exercise-detail", kwargs={"id": program_id, "exercise_id": exercise_id})
+        )
+        unfavorite_response = self.client.post(
+            reverse(
+                "program-exercise-favorite-update",
+                kwargs={"id": program_id, "exercise_id": exercise_id},
+            ),
+            {"is_favorite": False},
+            format="json",
+        )
+        calendar_response = self.client.get(
+            reverse("favorite-exercise-calendar"),
+            {"year": 2026, "month": 5},
+        )
+
+        self.assertEqual(favorite_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(favorite_response.data["is_favorite"])
+        self.assertEqual(favorite_response.data["suggested_days_per_week"], 3)
+        self.assertEqual(favorite_response.data["message"], "3 days a week is ok for this exercise.")
+        self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(detail_response.data["is_favorite"])
+        self.assertEqual(detail_response.data["suggested_days_per_week"], 3)
+        self.assertEqual(unfavorite_response.status_code, status.HTTP_200_OK)
+        self.assertFalse(unfavorite_response.data["is_favorite"])
+        self.assertEqual(unfavorite_response.data["message"], "Exercise removed from favourites.")
+        self.assertEqual(calendar_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(calendar_response.data["days"][0]["exercises"], [])
+
+    def test_favorite_calendar_returns_short_exercise_information(self) -> None:
+        upsert_seed_programs()
+        access_token, _ = self.signup_and_verify_user()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
+        program_id = self.get_neck_program_id()
+        exercise_id = self.get_program_exercise_ids(program_id)[0]
+        self.client.post(
+            reverse(
+                "program-exercise-favorite-update",
+                kwargs={"id": program_id, "exercise_id": exercise_id},
+            ),
+            {"is_favorite": True},
+            format="json",
+        )
+
+        response = self.client.get(
+            reverse("favorite-exercise-calendar"),
+            {"year": 2026, "month": 5},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["year"], 2026)
+        self.assertEqual(response.data["month"], 5)
+        self.assertEqual(len(response.data["days"]), 31)
+        self.assertEqual(response.data["days"][0]["date"], "2026-05-01")
+        self.assertEqual(len(response.data["days"][0]["exercises"]), 1)
+        exercise_entry = response.data["days"][0]["exercises"][0]
+        self.assertEqual(exercise_entry["exercise_id"], exercise_id)
+        self.assertIn("title", exercise_entry)
+        self.assertIn("body_area", exercise_entry)
+        self.assertIn("duration_sec", exercise_entry)
+        self.assertIn("image", exercise_entry)
+        self.assertEqual(exercise_entry["suggested_days_per_week"], 3)
+        self.assertEqual(len(exercise_entry["program_items"]), 1)
+        self.assertEqual(exercise_entry["program_items"][0]["program_id"], program_id)
+
+    def test_completion_response_sets_is_completed_and_updates_favorite_streak(self) -> None:
+        upsert_seed_programs()
+        access_token, _ = self.signup_and_verify_user()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
+        program_id = self.get_neck_program_id()
+        exercise_id = self.get_program_exercise_ids(program_id)[0]
+        self.client.post(
+            reverse(
+                "program-exercise-favorite-update",
+                kwargs={"id": program_id, "exercise_id": exercise_id},
+            ),
+            {"is_favorite": True},
+            format="json",
+        )
+
+        with patch("apps.core.programs.services.timezone.now") as mocked_now:
+            mocked_now.return_value = datetime(2026, 5, 1, 9, 0, tzinfo=timezone.utc)
+            self.complete_all_exercise_steps(program_id, exercise_id)
+
+        with patch("apps.core.programs.services.timezone.now") as mocked_now:
+            mocked_now.return_value = datetime(2026, 5, 1, 18, 0, tzinfo=timezone.utc)
+            same_day_response = self.client.post(
+                reverse(
+                    "exercise-step-complete",
+                    kwargs={"id": program_id, "exercise_id": exercise_id, "step_index": 2},
+                ),
+                format="json",
+            )
+
+        with patch("apps.core.programs.services.timezone.now") as mocked_now:
+            mocked_now.return_value = datetime(2026, 5, 2, 9, 0, tzinfo=timezone.utc)
+            next_day_response = self.client.post(
+                reverse(
+                    "exercise-step-complete",
+                    kwargs={"id": program_id, "exercise_id": exercise_id, "step_index": 2},
+                ),
+                format="json",
+            )
+
+        with patch("apps.core.programs.services.timezone.now") as mocked_now:
+            mocked_now.return_value = datetime(2026, 5, 4, 9, 0, tzinfo=timezone.utc)
+            skipped_day_response = self.client.post(
+                reverse(
+                    "exercise-step-complete",
+                    kwargs={"id": program_id, "exercise_id": exercise_id, "step_index": 2},
+                ),
+                format="json",
+            )
+
+        self.assertEqual(same_day_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(same_day_response.data["is_completed"])
+        self.assertTrue(same_day_response.data["is_favorite"])
+        self.assertEqual(same_day_response.data["current_streak_days"], 1)
+        self.assertEqual(next_day_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(next_day_response.data["current_streak_days"], 2)
+        self.assertEqual(next_day_response.data["longest_streak_days"], 2)
+        self.assertEqual(skipped_day_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(skipped_day_response.data["current_streak_days"], 1)
+        self.assertEqual(skipped_day_response.data["longest_streak_days"], 2)
+
+    def test_program_exercise_etags_change_when_favorite_state_changes(self) -> None:
+        upsert_seed_programs()
+        access_token, _ = self.signup_and_verify_user()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
+        program_id = self.get_neck_program_id()
+        exercise_id = self.get_program_exercise_ids(program_id)[0]
+        list_url = reverse("program-exercise-list", kwargs={"id": program_id})
+        detail_url = reverse("program-exercise-detail", kwargs={"id": program_id, "exercise_id": exercise_id})
+
+        first_list_response = self.client.get(list_url)
+        first_detail_response = self.client.get(detail_url)
+
+        self.client.post(
+            reverse(
+                "program-exercise-favorite-update",
+                kwargs={"id": program_id, "exercise_id": exercise_id},
+            ),
+            {"is_favorite": True},
+            format="json",
+        )
+
+        second_list_response = self.client.get(list_url, HTTP_IF_NONE_MATCH=first_list_response.headers.get("ETag"))
+        second_detail_response = self.client.get(detail_url, HTTP_IF_NONE_MATCH=first_detail_response.headers.get("ETag"))
+
+        self.assertEqual(first_list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(first_detail_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_detail_response.status_code, status.HTTP_200_OK)
+        self.assertNotEqual(first_list_response.headers.get("ETag"), second_list_response.headers.get("ETag"))
+        self.assertNotEqual(first_detail_response.headers.get("ETag"), second_detail_response.headers.get("ETag"))
 
     def test_program_list_returns_etag_and_supports_not_modified(self) -> None:
         upsert_seed_programs()
