@@ -1,8 +1,12 @@
+import logging
 from typing import Any
 
 from django.db import transaction
 
+from apps.core.logging_utils import build_log_extra
 from apps.core.users.models import Profile, User
+
+logger = logging.getLogger(__name__)
 
 
 def update_user_profile(
@@ -25,6 +29,17 @@ def update_user_profile(
     }
 
     if len(next_profile_values) == 0:
+        logger.info(
+            "profile_update_skipped_empty_payload",
+            extra=build_log_extra(
+                "profile_update",
+                user.id,
+                user.email,
+                None,
+                None,
+                None,
+            ),
+        )
         return user
 
     with transaction.atomic():
@@ -48,4 +63,15 @@ def update_user_profile(
         profile.save(update_fields=update_fields)
 
     user.refresh_from_db()
+    logger.info(
+        "profile_updated",
+        extra=build_log_extra(
+            "profile_update",
+            user.id,
+            user.email,
+            None,
+            None,
+            None,
+        ),
+    )
     return user

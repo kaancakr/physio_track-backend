@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import secrets
 from datetime import datetime, timedelta
 from dataclasses import dataclass
@@ -17,9 +18,12 @@ from django.utils import timezone
 from rest_framework.exceptions import AuthenticationFailed, ValidationError
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from apps.core.logging_utils import build_log_extra
 from apps.core.authentication.models import EmailVerificationCode, VerificationPurpose
 from apps.core.authentication.viewmodels import EmailPayload, LoginPayload, SignupPayload, VerifyCodePayload
 from apps.core.users.models import Profile, User
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -58,11 +62,35 @@ class ResendEmailConnector:
                 response_body = response.read().decode("utf-8")
         except HTTPError as error:
             response_body = error.read().decode("utf-8", errors="replace")
+            logger.error(
+                "resend_email_request_failed",
+                extra=build_log_extra(
+                    "email_send",
+                    None,
+                    recipient_email,
+                    None,
+                    None,
+                    error.code,
+                ),
+                exc_info=True,
+            )
             raise RuntimeError(
                 "Resend email delivery failed with "
                 f"status={error.code} recipient={recipient_email} body={response_body}"
             ) from error
         except URLError as error:
+            logger.error(
+                "resend_email_request_failed",
+                extra=build_log_extra(
+                    "email_send",
+                    None,
+                    recipient_email,
+                    None,
+                    None,
+                    None,
+                ),
+                exc_info=True,
+            )
             raise RuntimeError(
                 "Resend email delivery failed with "
                 f"recipient={recipient_email} reason={error.reason}"
@@ -71,10 +99,33 @@ class ResendEmailConnector:
         parsed_response = json.loads(response_body)
 
         if "id" not in parsed_response:
+            logger.error(
+                "resend_email_response_invalid",
+                extra=build_log_extra(
+                    "email_send",
+                    None,
+                    recipient_email,
+                    None,
+                    None,
+                    None,
+                ),
+            )
             raise RuntimeError(
                 "Resend email delivery returned an unexpected response "
                 f"for recipient={recipient_email} body={response_body}"
             )
+
+        logger.info(
+            "signup_code_email_sent",
+            extra=build_log_extra(
+                "email_send",
+                None,
+                recipient_email,
+                None,
+                None,
+                None,
+            ),
+        )
 
 
 class DjangoEmailConnector:
@@ -88,6 +139,17 @@ class DjangoEmailConnector:
             from_email=self.from_email,
             recipient_list=[recipient_email],
             fail_silently=False,
+        )
+        logger.info(
+            "signup_code_email_sent",
+            extra=build_log_extra(
+                "email_send",
+                None,
+                recipient_email,
+                None,
+                None,
+                None,
+            ),
         )
 
 
@@ -142,6 +204,17 @@ def upsert_signup_user(payload: SignupPayload) -> User:
         existing_user = User.objects.select_for_update().filter(email=normalized_email).first()
 
         if existing_user is not None and existing_user.is_email_verified:
+            logger.warning(
+                "signup_rejected_existing_verified_user",
+                extra=build_log_extra(
+                    "signup",
+                    existing_user.id,
+                    normalized_email,
+                    None,
+                    None,
+                    None,
+                ),
+            )
             raise ValidationError({"email": "An account with this email already exists."})
 
         if existing_user is None:
@@ -151,12 +224,34 @@ def upsert_signup_user(payload: SignupPayload) -> User:
                 is_active=False,
                 is_email_verified=False,
             )
+            logger.info(
+                "signup_user_created",
+                extra=build_log_extra(
+                    "signup",
+                    user.id,
+                    normalized_email,
+                    None,
+                    None,
+                    None,
+                ),
+            )
         else:
             user = existing_user
             user.set_password(payload["password"])
             user.is_active = False
             user.is_email_verified = False
             user.save(update_fields=["password", "is_active", "is_email_verified", "updated_at"])
+            logger.info(
+                "signup_user_updated",
+                extra=build_log_extra(
+                    "signup",
+                    user.id,
+                    normalized_email,
+                    None,
+                    None,
+                    None,
+                ),
+            )
 
         Profile.objects.update_or_create(
             user=user,
@@ -193,6 +288,17 @@ def replace_signup_code(user: User) -> str:
             expires_at=build_code_expiry(),
         )
 
+    logger.info(
+        "signup_code_replaced",
+        extra=build_log_extra(
+            "email_verify",
+            user.id,
+            user.email,
+            None,
+            None,
+            None,
+        ),
+    )
     return code
 
 
@@ -205,6 +311,17 @@ def send_signup_code(user: User) -> None:
 def signup_user(payload: SignupPayload) -> User:
     user = upsert_signup_user(payload)
     send_signup_code(user)
+    logger.info(
+        "signup_completed",
+        extra=build_log_extra(
+            "signup",
+            user.id,
+            user.email,
+            None,
+            None,
+            None,
+        ),
+    )
     return user
 
 
@@ -213,9 +330,31 @@ def resend_signup_code(payload: EmailPayload) -> None:
     user = User.objects.filter(email=normalized_email, is_email_verified=False).first()
 
     if user is None:
+        logger.info(
+            "signup_code_resend_skipped",
+            extra=build_log_extra(
+                "email_send",
+                None,
+                normalized_email,
+                None,
+                None,
+                None,
+            ),
+        )
         return
 
     send_signup_code(user)
+    logger.info(
+        "signup_code_resent",
+        extra=build_log_extra(
+            "email_send",
+            user.id,
+            user.email,
+            None,
+            None,
+            None,
+        ),
+    )
 
 
 def verify_signup_code(payload: VerifyCodePayload) -> TokenBundle:
@@ -226,6 +365,17 @@ def verify_signup_code(payload: VerifyCodePayload) -> TokenBundle:
         user = User.objects.select_for_update().filter(email=normalized_email).first()
 
         if user is None:
+            logger.warning(
+                "signup_code_verification_failed_user_missing",
+                extra=build_log_extra(
+                    "email_verify",
+                    None,
+                    normalized_email,
+                    None,
+                    None,
+                    None,
+                ),
+            )
             raise ValidationError({"code": "Invalid or expired verification code."})
 
         verification_code = EmailVerificationCode.objects.select_for_update().filter(
@@ -235,19 +385,75 @@ def verify_signup_code(payload: VerifyCodePayload) -> TokenBundle:
         ).order_by("-created_at").first()
 
         if verification_code is None:
+            logger.warning(
+                "signup_code_verification_failed_code_missing",
+                extra=build_log_extra(
+                    "email_verify",
+                    user.id,
+                    normalized_email,
+                    None,
+                    None,
+                    None,
+                ),
+            )
             raise ValidationError({"code": "Invalid or expired verification code."})
 
         if verification_code.expires_at <= timezone.now():
+            logger.warning(
+                "signup_code_verification_failed_expired",
+                extra=build_log_extra(
+                    "email_verify",
+                    user.id,
+                    normalized_email,
+                    None,
+                    None,
+                    None,
+                ),
+            )
             raise ValidationError({"code": "The verification code has expired."})
 
         if verification_code.attempt_count >= max_attempts:
+            logger.warning(
+                "signup_code_verification_failed_attempt_limit",
+                extra=build_log_extra(
+                    "email_verify",
+                    user.id,
+                    normalized_email,
+                    None,
+                    None,
+                    None,
+                ),
+            )
             raise ValidationError({"code": "Too many verification attempts. Request a new code."})
 
         if not check_password(payload["code"], verification_code.code_hash):
             verification_code.attempt_count += 1
             verification_code.save(update_fields=["attempt_count", "updated_at"])
 
+            logger.warning(
+                "signup_code_verification_failed_invalid_code",
+                extra=build_log_extra(
+                    "email_verify",
+                    user.id,
+                    normalized_email,
+                    None,
+                    None,
+                    None,
+                ),
+            )
+
             if verification_code.attempt_count >= max_attempts:
+                logger.warning(
+                    "signup_code_verification_failed_attempt_limit",
+                    extra=build_log_extra(
+                        "email_verify",
+                        user.id,
+                        normalized_email,
+                        None,
+                        None,
+                        None,
+                    ),
+                )
                 raise ValidationError({"code": "Too many verification attempts. Request a new code."})
 
             raise ValidationError({"code": "Invalid or expired verification code."})
@@ -259,6 +465,17 @@ def verify_signup_code(payload: VerifyCodePayload) -> TokenBundle:
         user.is_email_verified = True
         user.save(update_fields=["is_active", "is_email_verified", "updated_at"])
 
+    logger.info(
+        "signup_code_verified",
+        extra=build_log_extra(
+            "email_verify",
+            user.id,
+            user.email,
+            None,
+            None,
+            None,
+        ),
+    )
     return build_token_bundle(user)
 
 
@@ -267,19 +484,74 @@ def authenticate_user(payload: LoginPayload) -> TokenBundle:
     user = User.objects.filter(email=normalized_email).first()
 
     if user is None:
+        logger.warning(
+            "login_failed_user_missing",
+            extra=build_log_extra(
+                "login",
+                None,
+                normalized_email,
+                None,
+                None,
+                None,
+            ),
+        )
         raise AuthenticationFailed("Invalid email or password.")
 
     if not user.is_email_verified:
+        logger.warning(
+            "login_failed_email_unverified",
+            extra=build_log_extra(
+                "login",
+                user.id,
+                normalized_email,
+                None,
+                None,
+                None,
+            ),
+        )
         raise AuthenticationFailed("Email verification is required before login.")
 
     if not user.is_active:
+        logger.warning(
+            "login_failed_user_inactive",
+            extra=build_log_extra(
+                "login",
+                user.id,
+                normalized_email,
+                None,
+                None,
+                None,
+            ),
+        )
         raise AuthenticationFailed("This account is inactive.")
 
     authenticated_user = authenticate(email=normalized_email, password=payload["password"])
 
     if authenticated_user is None:
+        logger.warning(
+            "login_failed_invalid_credentials",
+            extra=build_log_extra(
+                "login",
+                user.id,
+                normalized_email,
+                None,
+                None,
+                None,
+            ),
+        )
         raise AuthenticationFailed("Invalid email or password.")
 
+    logger.info(
+        "login_succeeded",
+        extra=build_log_extra(
+            "login",
+            authenticated_user.id,
+            authenticated_user.email,
+            None,
+            None,
+            None,
+        ),
+    )
     return build_token_bundle(authenticated_user)
 
 
@@ -298,3 +570,15 @@ def logout_user(user: User, refresh_token: str) -> None:
         token.blacklist()
         user.token_version += 1
         user.save(update_fields=["token_version", "updated_at"])
+
+    logger.info(
+        "logout_succeeded",
+        extra=build_log_extra(
+            "logout",
+            user.id,
+            user.email,
+            None,
+            None,
+            None,
+        ),
+    )

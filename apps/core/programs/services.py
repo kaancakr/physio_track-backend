@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from typing import Iterable
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
+from apps.core.logging_utils import build_log_extra
 from apps.core.programs.models import Exercise, ExerciseProgram, ExerciseProgramItem, ExerciseStepCompletion
 from apps.core.programs.seed_data import PROGRAM_SEED_DATA
 from apps.core.users.models import User
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -237,6 +241,17 @@ def get_program_item(
             program__is_active=True,
         )
     except ExerciseProgramItem.DoesNotExist as exc:
+        logger.warning(
+            "program_item_not_found",
+            extra=build_log_extra(
+                "program_progress",
+                None,
+                None,
+                program_id,
+                exercise_id,
+                None,
+            ),
+        )
         raise ValidationError(
             {
                 "exercise_id": [
@@ -430,6 +445,17 @@ def complete_exercise_step(
             completed_at=timezone.now(),
         )
     except IntegrityError as exc:
+        logger.warning(
+            "exercise_step_completion_duplicate",
+            extra=build_log_extra(
+                "step_completion",
+                user.id,
+                user.email,
+                program_item.program_id,
+                program_item.exercise_id,
+                None,
+            ),
+        )
         raise ValidationError(
             {
                 "step_index": [
@@ -448,6 +474,17 @@ def complete_exercise_step(
         program=program_item.program,
     )
 
+    logger.info(
+        "exercise_step_completed",
+        extra=build_log_extra(
+            "step_completion",
+            user.id,
+            user.email,
+            program_item.program_id,
+            program_item.exercise_id,
+            None,
+        ),
+    )
     return StepCompletionResult(
         exercise_progress=updated_exercise_progress,
         program_progress=updated_program_progress,
@@ -518,4 +555,27 @@ def upsert_seed_programs() -> int:
                 },
             )
 
+        logger.info(
+            "program_seeded",
+            extra=build_log_extra(
+                "program_seed",
+                None,
+                None,
+                program.id,
+                None,
+                None,
+            ),
+        )
+
+    logger.info(
+        "program_seed_completed",
+        extra=build_log_extra(
+            "program_seed",
+            None,
+            None,
+            None,
+            None,
+            None,
+        ),
+    )
     return created_or_updated_count

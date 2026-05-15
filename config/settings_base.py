@@ -8,6 +8,39 @@ BASE_DIR: Final[Path] = Path(__file__).resolve().parent.parent
 
 load_dotenv(BASE_DIR / ".env")
 
+LOGGING: dict[str, object] = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "filters": {
+        "context_defaults": {
+            "()": "apps.core.logging_utils.ContextDefaultsFilter",
+        },
+    },
+    "formatters": {
+        "standard": {
+            "format": (
+                "%(asctime)s [%(levelname)s] %(name)s: %(message)s "
+                "%(operation)s (user_id: %(user_id)s email=%(email)s "
+                "program_id=%(program_id)s exercise_id=%(exercise_id)s status_code=%(status_code)s)"
+            )
+        }
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "standard",
+            "filters": ["context_defaults"],
+        },
+    },
+    "loggers": {
+        "apps.core": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+}
+
 
 def read_optional_env(name: str) -> str | None:
     import os
