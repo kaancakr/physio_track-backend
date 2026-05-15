@@ -114,6 +114,15 @@ def derive_therapeutic_goals(body_area: str) -> list[str]:
     return ["reduce_general_stiffness", "improve_coordination", "prepare_for_activity"]
 
 
+def derive_suggested_days_per_week(metadata: dict[str, object]) -> int:
+    raw_suggested_days_per_week = metadata.get("suggested_days_per_week")
+
+    if isinstance(raw_suggested_days_per_week, int) and raw_suggested_days_per_week > 0:
+        return raw_suggested_days_per_week
+
+    return 3
+
+
 def build_seed_exercise_metadata(
     body_area: str,
     title: str,
@@ -152,6 +161,7 @@ def build_seed_exercise_metadata(
         "movement_type": derive_movement_type(title, instruction),
         "primary_targets": derive_primary_targets(body_area),
         "therapeutic_goals": derive_therapeutic_goals(body_area),
+        "suggested_days_per_week": derive_suggested_days_per_week(metadata),
         "safety_flags": [caution_note],
         "content_source": "seed_programs",
     }

@@ -100,6 +100,37 @@ def get_favourite_exercise(program_item: ExerciseProgramItem) -> FavouriteExerci
     return favourite_exercise
 
 
+class ExerciseProgressFieldsMixin:
+    def get_steps_count(self, obj: ExerciseProgramItem) -> int:
+        return get_exercise_progress(obj).steps_count
+
+    def get_completed_steps_count(self, obj: ExerciseProgramItem) -> int:
+        return get_exercise_progress(obj).completed_steps_count
+
+    def get_next_step_index(self, obj: ExerciseProgramItem) -> int | None:
+        return get_exercise_progress(obj).next_step_index
+
+    def get_is_finished(self, obj: ExerciseProgramItem) -> bool:
+        return get_exercise_progress(obj).is_finished
+
+    def get_is_completed(self, obj: ExerciseProgramItem) -> bool:
+        return get_exercise_progress(obj).is_finished
+
+
+class FavouriteExerciseFieldsMixin:
+    def get_is_favorite(self, obj: ExerciseProgramItem) -> bool:
+        return get_favourite_exercise(obj).is_favorite
+
+    def get_suggested_days_per_week(self, obj: ExerciseProgramItem) -> int | None:
+        return get_favourite_exercise(obj).suggested_days_per_week
+
+    def get_current_streak_days(self, obj: ExerciseProgramItem) -> int | None:
+        return get_favourite_exercise(obj).current_streak_days
+
+    def get_longest_streak_days(self, obj: ExerciseProgramItem) -> int | None:
+        return get_favourite_exercise(obj).longest_streak_days
+
+
 class ExerciseProgramListItemViewModel(serializers.ModelSerializer):
     cover_image = serializers.SerializerMethodField()
     exercises_count = serializers.SerializerMethodField()
@@ -157,7 +188,11 @@ class ExerciseProgramListItemViewModel(serializers.ModelSerializer):
         return get_program_progress(obj).is_finished
 
 
-class ExerciseProgramExerciseListItemViewModel(serializers.ModelSerializer):
+class ExerciseProgramExerciseListItemViewModel(
+    ExerciseProgressFieldsMixin,
+    FavouriteExerciseFieldsMixin,
+    serializers.ModelSerializer,
+):
     id = serializers.UUIDField(source="exercise.id")
     item_id = serializers.UUIDField(source="id")
     title = serializers.CharField(source="exercise.title")
@@ -212,35 +247,11 @@ class ExerciseProgramExerciseListItemViewModel(serializers.ModelSerializer):
             "alt": obj.exercise.image_alt,
         }
 
-    def get_steps_count(self, obj: ExerciseProgramItem) -> int:
-        return get_exercise_progress(obj).steps_count
-
-    def get_completed_steps_count(self, obj: ExerciseProgramItem) -> int:
-        return get_exercise_progress(obj).completed_steps_count
-
-    def get_next_step_index(self, obj: ExerciseProgramItem) -> int | None:
-        return get_exercise_progress(obj).next_step_index
-
-    def get_is_finished(self, obj: ExerciseProgramItem) -> bool:
-        return get_exercise_progress(obj).is_finished
-
-    def get_is_completed(self, obj: ExerciseProgramItem) -> bool:
-        return get_exercise_progress(obj).is_finished
-
-    def get_is_favorite(self, obj: ExerciseProgramItem) -> bool:
-        return get_favourite_exercise(obj).is_favorite
-
-    def get_suggested_days_per_week(self, obj: ExerciseProgramItem) -> int | None:
-        return get_favourite_exercise(obj).suggested_days_per_week
-
-    def get_current_streak_days(self, obj: ExerciseProgramItem) -> int | None:
-        return get_favourite_exercise(obj).current_streak_days
-
-    def get_longest_streak_days(self, obj: ExerciseProgramItem) -> int | None:
-        return get_favourite_exercise(obj).longest_streak_days
-
-
-class ExerciseProgramExerciseDetailViewModel(serializers.ModelSerializer):
+class ExerciseProgramExerciseDetailViewModel(
+    ExerciseProgressFieldsMixin,
+    FavouriteExerciseFieldsMixin,
+    serializers.ModelSerializer,
+):
     id = serializers.UUIDField(source="exercise.id")
     item_id = serializers.UUIDField(source="id")
     title = serializers.CharField(source="exercise.title")
@@ -360,35 +371,8 @@ class ExerciseProgramExerciseDetailViewModel(serializers.ModelSerializer):
 
         return timing
 
-    def get_steps_count(self, obj: ExerciseProgramItem) -> int:
-        return get_exercise_progress(obj).steps_count
-
-    def get_completed_steps_count(self, obj: ExerciseProgramItem) -> int:
-        return get_exercise_progress(obj).completed_steps_count
-
     def get_completed_step_indexes(self, obj: ExerciseProgramItem) -> list[int]:
         return get_exercise_progress(obj).completed_step_indexes
-
-    def get_next_step_index(self, obj: ExerciseProgramItem) -> int | None:
-        return get_exercise_progress(obj).next_step_index
-
-    def get_is_finished(self, obj: ExerciseProgramItem) -> bool:
-        return get_exercise_progress(obj).is_finished
-
-    def get_is_completed(self, obj: ExerciseProgramItem) -> bool:
-        return get_exercise_progress(obj).is_finished
-
-    def get_is_favorite(self, obj: ExerciseProgramItem) -> bool:
-        return get_favourite_exercise(obj).is_favorite
-
-    def get_suggested_days_per_week(self, obj: ExerciseProgramItem) -> int | None:
-        return get_favourite_exercise(obj).suggested_days_per_week
-
-    def get_current_streak_days(self, obj: ExerciseProgramItem) -> int | None:
-        return get_favourite_exercise(obj).current_streak_days
-
-    def get_longest_streak_days(self, obj: ExerciseProgramItem) -> int | None:
-        return get_favourite_exercise(obj).longest_streak_days
 
 
 class ExerciseStepCompletionResponseViewModel(serializers.Serializer):
@@ -415,8 +399,6 @@ class FavouriteExerciseUpdateResponseViewModel(serializers.Serializer):
     exercise_id = serializers.UUIDField()
     is_favorite = serializers.BooleanField()
     suggested_days_per_week = serializers.IntegerField(allow_null=True)
-    current_streak_days = serializers.IntegerField(allow_null=True)
-    longest_streak_days = serializers.IntegerField(allow_null=True)
     message = serializers.CharField()
 
 

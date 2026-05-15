@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.db.models import Count
 
 from apps.core.programs.models import (
     Exercise,
@@ -23,6 +24,22 @@ class ExerciseProgramCompletionInline(admin.TabularInline):
     ordering = ("-finished_at",)
 
 
+class UserFavouriteExerciseInline(admin.TabularInline):
+    model = UserFavouriteExercise
+    extra = 0
+    autocomplete_fields = ("user",)
+    verbose_name = "User favourite for this exercise"
+    verbose_name_plural = "Users who favourited this exercise"
+    readonly_fields = (
+        "suggested_days_per_week",
+        "current_streak_days",
+        "longest_streak_days",
+        "last_completed_on",
+        "created_at",
+        "updated_at",
+    )
+
+
 @admin.register(ExerciseProgram)
 class ExerciseProgramAdmin(admin.ModelAdmin):
     inlines = [ExerciseProgramItemInline, ExerciseProgramCompletionInline]
@@ -33,9 +50,55 @@ class ExerciseProgramAdmin(admin.ModelAdmin):
 
 @admin.register(Exercise)
 class ExerciseAdmin(admin.ModelAdmin):
-    list_display = ("id", "code", "title", "body_area", "duration_sec")
+    inlines = [UserFavouriteExerciseInline]
+    list_display = ("id", "code", "title", "body_area", "duration_sec", "favourites_count")
     list_filter = ("body_area",)
     search_fields = ("id", "code", "title", "instruction")
+    fieldsets = (
+        (
+            "Exercise",
+            {
+                "fields": (
+                    "code",
+                    "title",
+                    "instruction",
+                    "caution_note",
+                    "duration_sec",
+                    "body_area",
+                )
+            },
+        ),
+        (
+            "Images",
+            {
+                "fields": (
+                    "image_url",
+                    "image_thumbnail_url",
+                    "image_width",
+                    "image_height",
+                    "image_alt",
+                    "image_blurhash",
+                )
+            },
+        ),
+        (
+            "Step Metadata",
+            {
+                "fields": ("metadata",),
+                "description": (
+                    "This JSON stores the instruction steps for the exercise. "
+                    "Favourites are applied to the whole exercise below, not to individual steps."
+                ),
+            },
+        ),
+    )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(user_favourites_count=Count("user_favourite_exercises"))
+
+    @admin.display(ordering="user_favourites_count", description="Favourites")
+    def favourites_count(self, obj: Exercise) -> int:
+        return int(getattr(obj, "user_favourites_count", 0))
 
 
 @admin.register(ExerciseProgramItem)
@@ -72,3 +135,4 @@ class UserFavouriteExerciseAdmin(admin.ModelAdmin):
     )
     list_filter = ("exercise__body_area", "suggested_days_per_week")
     search_fields = ("user__email", "exercise__code", "exercise__title")
+    autocomplete_fields = ("user", "exercise")

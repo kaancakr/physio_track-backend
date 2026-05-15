@@ -607,8 +607,6 @@ class ExerciseFavouriteUpdateView(APIView):
                 "exercise_id": str(program_item.exercise_id),
                 "is_favorite": favourite_snapshot.is_favorite,
                 "suggested_days_per_week": favourite_snapshot.suggested_days_per_week,
-                "current_streak_days": favourite_snapshot.current_streak_days,
-                "longest_streak_days": favourite_snapshot.longest_streak_days,
                 "message": message,
             },
             status=HTTP_200_OK,
