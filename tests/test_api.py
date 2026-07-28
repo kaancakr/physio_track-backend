@@ -979,10 +979,15 @@ class ApiIntegrationTests(TestCase):
     def test_swagger_and_openapi_schema_endpoints_are_available(self) -> None:
         schema_response = self.client.get(reverse("schema"))
         swagger_response = self.client.get(reverse("swagger-ui"))
+        openapi_format_response = self.client.get("/api/schema/?format=openapi")
+        root_swagger_response = self.client.get("/swagger/?format=openapi")
 
         self.assertEqual(schema_response.status_code, status.HTTP_200_OK)
         self.assertEqual(swagger_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(openapi_format_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(root_swagger_response.status_code, status.HTTP_200_OK)
         self.assertIn("/api/auth/signup", schema_response.data["paths"])
+        self.assertIn("/api/auth/signup", root_swagger_response.data["paths"])
         self.assertIn("/api/programs/", schema_response.data["paths"])
         self.assertIn("400", schema_response.data["paths"]["/api/auth/signup"]["post"]["responses"])
         self.assertIn("429", schema_response.data["paths"]["/api/auth/signup"]["post"]["responses"])

@@ -1,7 +1,27 @@
+from drf_spectacular.renderers import (
+    OpenApiJsonRenderer,
+    OpenApiJsonRenderer2,
+    OpenApiYamlRenderer,
+    OpenApiYamlRenderer2,
+)
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse, inline_serializer
 from rest_framework import serializers
+from rest_framework.renderers import BaseRenderer
 
+
+class OpenApiJsonFormatRenderer(OpenApiJsonRenderer):
+    format: str = "openapi"
+    media_type: str = "application/json"
+
+
+OPENAPI_RENDERER_CLASSES: list[type[BaseRenderer]] = [
+    OpenApiJsonFormatRenderer,
+    OpenApiJsonRenderer,
+    OpenApiJsonRenderer2,
+    OpenApiYamlRenderer,
+    OpenApiYamlRenderer2,
+]
 
 ErrorDetailViewModel = inline_serializer(
     name="ErrorDetailViewModel",
